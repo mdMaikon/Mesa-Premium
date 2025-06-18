@@ -12,7 +12,8 @@ import time
 # Importar classes de módulos separados
 from path_manager import PathManager
 from automacao_config import AutomacaoConfig
-from renovar_token import RenovarToken
+from database import DatabaseManager
+from automacao_manager import AutomacaoManager
 
 # Configurações do CustomTkinter
 ctk.set_appearance_mode("light")  # Modes: "System" (standard), "Dark", "Light"
@@ -23,7 +24,8 @@ class MenuAutomacoes:
         # Inicializar gerenciadores
         self.path_manager = PathManager()
         self.automacao_config = AutomacaoConfig(self.path_manager)
-        self.renovar_token = RenovarToken()
+        self.db_manager = DatabaseManager()
+        self.automacao_manager = AutomacaoManager(self.path_manager, self.db_manager)
 
         # Configurar janela principal
         self.root = ctk.CTk()
@@ -40,6 +42,10 @@ class MenuAutomacoes:
         self.automacoes_dir = self.path_manager.get_path('automacoes')
         self.logs_dir = self.path_manager.get_path('logs')
         self.config_file = self.path_manager.get_path('config')
+        
+        # Lista de automações (agora vem do AutomacaoManager)
+        self.automacoes_disponiveis = []
+        self.automacoes_cache = {}
 
         # Variáveis de controle
         self.processos_ativos = {}
@@ -357,7 +363,7 @@ class MenuAutomacoes:
         # Adicionar mensagem inicial
         self.adicionar_mensagem_usuario("Sistema iniciado e pronto para uso", tipo='info')
 
-    def criar_card_automacao(self, nome, caminho, status="Pronto"):
+    def criar_card_automacao(self, nome, descricao="", status="Pronto"):
         """Cria um card moderno para automação"""
         # Frame principal do card com gradiente sutil
         card_frame = ctk.CTkFrame(self.scroll_frame, 
@@ -429,7 +435,7 @@ class MenuAutomacoes:
         # Armazenar referências
         automacao_info = {
             'nome': nome,
-            'caminho': caminho,
+            'descricao': descricao,
             'card_frame': card_frame,
             'status_label': status_label,
             'indicator': indicator,
@@ -582,24 +588,21 @@ class MenuAutomacoes:
         self.campo_pesquisa.delete(0, 'end')
 
         try:
-            if self.automacoes_dir is not None and self.automacoes_dir.exists():
-                exe_files = list(self.automacoes_dir.glob("*.exe"))
+            # Recarregar automações do manager
+            self.automacao_manager.recarregar_automacoes()
+            
+            # Obter lista de automações disponíveis (filtrando tokens)
+            self.automacoes_disponiveis = self.automacao_manager.listar_automacoes(filtrar_token=True)
+            
+            for automacao_meta in self.automacoes_disponiveis:
+                nome = automacao_meta['nome']
+                descricao = automacao_meta['descricao']
+                self.criar_card_automacao(nome, descricao)
 
-                for exe_file in exe_files:
-                    nome = exe_file.stem
-                    caminho = str(exe_file)
-                    self.criar_card_automacao(nome, caminho)
-
-                self.contador_automacoes.configure(text=f"{len(exe_files)} automações disponíveis")
-                self.log_interno.append(f"[{datetime.datetime.now()}] Encontradas {len(exe_files)} automações")
-                self.adicionar_mensagem_usuario(f"{len(exe_files)} automações carregadas", tipo='success')
-
-            else:
-                self.log_interno.append(f"[{datetime.datetime.now()}] Pasta de automações não encontrada")
-                self.adicionar_mensagem_usuario("Pasta de automações não encontrada", tipo='error')
-                
-                if self.automacoes_dir is not None:
-                    self.automacoes_dir.mkdir(exist_ok=True, parents=True)
+            total_automacoes = len(self.automacoes_disponiveis)
+            self.contador_automacoes.configure(text=f"{total_automacoes} automações disponíveis")
+            self.log_interno.append(f"[{datetime.datetime.now()}] Encontradas {total_automacoes} automações")
+            self.adicionar_mensagem_usuario(f"{total_automacoes} automações carregadas", tipo='success')
 
         except Exception as e:
             self.log_interno.append(f"[{datetime.datetime.now()}] Erro ao carregar automações: {str(e)}")
@@ -615,57 +618,139 @@ class MenuAutomacoes:
         if not automacao:
             return
 
-        if not os.path.exists(automacao['caminho']):
-            self.adicionar_mensagem_usuario(f"Arquivo não encontrado: {nome}", tipo='error')
-            messagebox.showerror("Erro", f"Arquivo não encontrado:\n{automacao['caminho']}")
+        # Verificar se automação existe no manager
+        if not self.automacao_manager.obter_automacao(nome):
+            self.adicionar_mensagem_usuario(f"Automação não encontrada: {nome}", tipo='error')
+            messagebox.showerror("Erro", f"Automação não encontrada: {nome}")
             return
 
         self.btn_executar_principal.configure(state='disabled')
-        thread = threading.Thread(target=self.executar_processo, args=(automacao,))
+        thread = threading.Thread(target=self.executar_processo_modular, args=(nome,))
         thread.daemon = True
         thread.start()
 
     def executar_renovar_token(self):
-        """Executa renovar token"""
+        """Executa renovar token usando a versão simplificada"""
         try:
-            automacao_token = next((a for a in self.automacoes_encontradas if a['nome'] == "Renovar Token"), None)
-            
-            if automacao_token:
-                self.selecionar_automacao("Renovar Token")
-                self.executar_automacao()
-            else:
-                self.adicionar_mensagem_usuario("Executando Renovar Token...", tipo='info')
-                thread = threading.Thread(target=self._executar_token_direto)
-                thread.daemon = True
-                thread.start()
+            self.adicionar_mensagem_usuario("🔑 Iniciando renovação de token...", tipo='info')
+            thread = threading.Thread(target=self.executar_token_simplificado)
+            thread.daemon = True
+            thread.start()
                 
         except Exception as e:
             self.log_interno.append(f"[{datetime.datetime.now()}] Erro ao executar Renovar Token: {str(e)}")
-            self.adicionar_mensagem_usuario("Erro ao executar Renovar Token", tipo='error')
+            self.adicionar_mensagem_usuario("❌ Erro ao executar Renovar Token", tipo='error')
 
-    def _executar_token_direto(self):
-        """Executa token diretamente"""
+    def executar_token_simplificado(self):
+        """Executa renovar_token_simplified.py diretamente"""
+        nome_automacao = "renovar_token_simplificado"
+        execucao_id = None
+        
         try:
-            self.log_interno.append(f"[{datetime.datetime.now()}] Iniciando Renovar Token via módulo")
+            self.log_interno.append(f"[{datetime.datetime.now()}] Iniciando execução de token simplificado")
             
-            resultado = None
-            if hasattr(self.renovar_token, 'run'):
-                resultado = self.renovar_token.run()
+            # Registrar início da execução no banco
+            execucao_id = self.db_manager.registrar_inicio_execucao(nome_automacao)
+            
+            # Importar e executar o módulo diretamente
+            import importlib.util
+            base_path = self.path_manager.get_path('base')
+            if base_path is None:
+                raise ValueError("Caminho base não encontrado")
+            
+            spec = importlib.util.spec_from_file_location(
+                "renovar_token_simplified", 
+                base_path / "renovar_token_simplified.py"
+            )
+            if spec is None or spec.loader is None:
+                raise ValueError("Não foi possível carregar o módulo renovar_token_simplified")
+            
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            # Buscar a classe e executar
+            extractor_class = getattr(module, 'HubXPTokenExtractorSimplified')
+            extractor = extractor_class()
+            
+            # Executar
+            resultado = extractor.run(headless=True)
+            
+            # Processar resultado
+            if resultado and isinstance(resultado, dict) and resultado.get('success', False):
+                mensagem_sucesso = resultado.get('message', 'Token renovado com sucesso')
+                self.root.after(0, lambda msg=mensagem_sucesso: self.adicionar_mensagem_usuario(f"✅ {msg}", tipo='success'))
+                
+                # Registrar sucesso no banco
+                if execucao_id:
+                    self.db_manager.registrar_fim_execucao(
+                        execucao_id, 'CONCLUIDO', dados_resultado=resultado
+                    )
             else:
-                metodos = [method for method in dir(self.renovar_token) if not method.startswith('_')]
-                self.log_interno.append(f"[{datetime.datetime.now()}] Métodos disponíveis em RenovarToken: {metodos}")
-                raise AttributeError(f"Nenhum método conhecido encontrado. Métodos disponíveis: {metodos}")
+                mensagem_erro = resultado.get('message', 'Erro na renovação do token') if resultado else 'Falha na execução'
+                self.root.after(0, lambda msg=mensagem_erro: self.adicionar_mensagem_usuario(f"❌ {msg}", tipo='error'))
+                
+                # Registrar erro no banco
+                if execucao_id:
+                    self.db_manager.registrar_fim_execucao(
+                        execucao_id, 'ERRO', mensagem_erro=mensagem_erro
+                    )
+                
+        except Exception as e:
+            self.log_interno.append(f"[{datetime.datetime.now()}] Erro durante execução de token: {str(e)}")
+            self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"❌ Erro inesperado na renovação de token: {str(e)}", tipo='error'))
+            
+            # Registrar erro no banco
+            if execucao_id:
+                try:
+                    self.db_manager.registrar_fim_execucao(
+                        execucao_id, 'ERRO', mensagem_erro=str(e)
+                    )
+                except:
+                    pass
 
-            if resultado:
-                self.root.after(0, lambda: self.adicionar_mensagem_usuario("Token renovado com sucesso", tipo='success'))
-                timestamp = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                self.salvar_historico_execucao("Renovar Token", "Concluído", timestamp)
+    def executar_processo_modular(self, nome_automacao):
+        """Executa processo usando AutomacaoManager"""
+        try:
+            self.log_interno.append(f"[{datetime.datetime.now()}] Iniciando execução modular: {nome_automacao}")
+            self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"Iniciando {nome_automacao}...", tipo='info'))
+            self.root.after(0, lambda: self.atualizar_status_automacao(nome_automacao, "Executando", 'warning'))
+            self.root.after(0, self.atualizar_contador_processos)
+
+            self.processos_ativos[nome_automacao] = True
+            
+            # Executar via AutomacaoManager
+            resultado = self.automacao_manager.executar_automacao(nome_automacao)
+            
+            if nome_automacao in self.processos_ativos:
+                del self.processos_ativos[nome_automacao]
+            
+            # Verificar resultado
+            if resultado and isinstance(resultado, dict) and resultado.get('success', False):
+                mensagem_sucesso = resultado.get('message', f"{nome_automacao} concluído com sucesso")
+                self.root.after(0, lambda msg=mensagem_sucesso: self.adicionar_mensagem_usuario(f"✅ {msg}", tipo='success'))
+                self.root.after(0, lambda nome=nome_automacao: self.atualizar_status_automacao(nome, "Concluído", 'success'))
+            elif resultado and isinstance(resultado, dict) and not resultado.get('success', True):
+                mensagem_erro = resultado.get('message', 'Erro na execução')
+                self.root.after(0, lambda msg=mensagem_erro: self.adicionar_mensagem_usuario(f"❌ {msg}", tipo='error'))
+                self.root.after(0, lambda nome=nome_automacao: self.atualizar_status_automacao(nome, "Erro", 'error'))
             else:
-                self.root.after(0, lambda: self.adicionar_mensagem_usuario("Token já estava atualizado", tipo='info'))
+                # Para automações que não retornam estrutura de sucesso/falha padrão
+                self.root.after(0, lambda nome=nome_automacao: self.adicionar_mensagem_usuario(f"✅ {nome} executado", tipo='success'))
+                self.root.after(0, lambda nome=nome_automacao: self.atualizar_status_automacao(nome, "Concluído", 'success'))
 
         except Exception as e:
-            self.log_interno.append(f"[{datetime.datetime.now()}] Erro no módulo Renovar Token: {str(e)}")
-            self.root.after(0, lambda: self.adicionar_mensagem_usuario("Erro ao renovar token", tipo='error'))
+            self.log_interno.append(f"[{datetime.datetime.now()}] Erro durante execução modular de {nome_automacao}: {str(e)}")
+            self.root.after(0, lambda nome=nome_automacao: self.adicionar_mensagem_usuario(f"❌ Erro inesperado em {nome}", tipo='error'))
+            self.root.after(0, lambda nome=nome_automacao: self.atualizar_status_automacao(nome, "Erro", 'error'))
+            
+            if nome_automacao in self.processos_ativos:
+                del self.processos_ativos[nome_automacao]
+
+        finally:
+            nome_selecionado = self.automacao_selecionada_label.cget('text')
+            if nome_automacao == nome_selecionado:
+                self.root.after(0, lambda: self.btn_executar_principal.configure(state='normal'))
+            self.root.after(0, self.atualizar_contador_processos)
 
     def abrir_pasta_especifica(self):
         """Abre a pasta específica da automação selecionada"""
@@ -675,90 +760,6 @@ class MenuAutomacoes:
                 log_callback=lambda msg: self.adicionar_mensagem_usuario(msg, tipo='info')
             )
 
-    def executar_processo(self, automacao):
-        """Executa o processo da automação"""
-        nome = automacao['nome']
-
-        try:
-            self.log_interno.append(f"[{datetime.datetime.now()}] Iniciando execução: {nome}")
-            self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"Iniciando {nome}...", tipo='info'))
-            self.root.after(0, lambda: self.atualizar_status_automacao(nome, "Executando", 'warning'))
-            self.root.after(0, self.atualizar_contador_processos)
-
-            # Pré-processamento se necessário
-            if self.automacao_config.tem_pre_processamento(nome):
-                self.log_interno.append(f"[{datetime.datetime.now()}] Executando pré-processamento para {nome}")
-                
-                resultado_pre = self.automacao_config.executar_pre_processamento(
-                    nome, log_callback=lambda msg: self.log_interno.append(f"[{datetime.datetime.now()}] {msg}")
-                )
-
-                if resultado_pre is False:
-                    if nome == "Renovar Token":
-                        self.root.after(0, lambda: self.adicionar_mensagem_usuario("Token já está atualizado", tipo='success'))
-                        self.root.after(0, lambda: self.atualizar_status_automacao(nome, "Atualizado", 'success'))
-                    else:
-                        self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"Erro no pré-processamento de {nome}", tipo='error'))
-                        self.root.after(0, lambda: self.atualizar_status_automacao(nome, "Erro", 'error'))
-
-                    self.salvar_historico_execucao(nome, "Erro Pré-Proc", datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
-                    return
-
-            # Executar processo
-            processo = subprocess.Popen(
-                automacao['caminho'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=os.path.dirname(automacao['caminho'])
-            )
-
-            self.processos_ativos[nome] = processo
-            stdout, stderr = processo.communicate()
-
-            if nome in self.processos_ativos:
-                del self.processos_ativos[nome]
-
-            # Log interno completo
-            if stdout:
-                self.log_interno.append(f"[{datetime.datetime.now()}] STDOUT {nome}: {stdout}")
-            if stderr:
-                self.log_interno.append(f"[{datetime.datetime.now()}] STDERR {nome}: {stderr}")
-
-            # Verificar resultado
-            if processo.returncode == 0:
-                # Pós-processamento se necessário
-                if self.automacao_config.tem_pos_processamento(nome):
-                    self.log_interno.append(f"[{datetime.datetime.now()}] Executando pós-processamento para {nome}")
-                    self.automacao_config.executar_pos_processamento(
-                        nome, log_callback=lambda msg: self.log_interno.append(f"[{datetime.datetime.now()}] {msg}")
-                    )
-
-                self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"{nome} concluído com sucesso", tipo='success'))
-                self.root.after(0, lambda: self.atualizar_status_automacao(nome, "Concluído", 'success'))
-                
-                timestamp = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                self.salvar_historico_execucao(nome, "Concluído", timestamp)
-            else:
-                self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"Erro ao executar {nome}", tipo='error'))
-                self.root.after(0, lambda: self.atualizar_status_automacao(nome, "Erro", 'error'))
-                
-                timestamp = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                self.salvar_historico_execucao(nome, "Erro", timestamp)
-
-        except Exception as e:
-            self.log_interno.append(f"[{datetime.datetime.now()}] Erro durante execução de {nome}: {str(e)}")
-            self.root.after(0, lambda: self.adicionar_mensagem_usuario(f"Erro inesperado em {nome}", tipo='error'))
-            self.root.after(0, lambda: self.atualizar_status_automacao(nome, "Erro", 'error'))
-            
-            if nome in self.processos_ativos:
-                del self.processos_ativos[nome]
-
-        finally:
-            nome_selecionado = self.automacao_selecionada_label.cget('text')
-            if nome == nome_selecionado:
-                self.root.after(0, lambda: self.btn_executar_principal.configure(state='normal'))
-            self.root.after(0, self.atualizar_contador_processos)
 
     def atualizar_status_automacao(self, nome, status, tipo='info'):
         """Atualiza o status visual de uma automação"""
@@ -830,13 +831,21 @@ class MenuAutomacoes:
     def obter_ultima_execucao(self, nome_automacao):
         """Obtém a data da última execução"""
         try:
+            # Primeiro tentar obter do banco de dados
+            ultima_exec = self.automacao_manager.obter_ultima_execucao(nome_automacao)
+            if ultima_exec:
+                data_exec = ultima_exec['inicio']
+                status = ultima_exec['status']
+                return f"{data_exec.strftime('%d/%m/%Y %H:%M:%S')} ({status})"
+            
+            # Fallback para arquivo JSON (compatibilidade)
             if self.config_file is not None and self.config_file.exists():
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     historico = config.get('historico_execucoes', {})
                     return historico.get(nome_automacao, {}).get('ultima_execucao', 'Nunca executado')
-        except:
-            pass
+        except Exception as e:
+            self.log_interno.append(f"[{datetime.datetime.now()}] Erro ao obter última execução: {str(e)}")
         return 'Nunca executado'
 
     def salvar_historico_execucao(self, nome_automacao, status, timestamp):

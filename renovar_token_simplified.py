@@ -1,25 +1,38 @@
+"""
+Automação: Renovar Token Hub XP - Versão Simplificada
+Extrai tokens de autenticação do Hub XP usando interface GUI e salva no banco MySQL
+"""
+
+from dotenv import load_dotenv
+import mysql.connector
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium import webdriver
+from PIL import Image
+from tkinter import messagebox
+import customtkinter as ctk
 import os
 import json
 import logging
 import platform
-import customtkinter as ctk
-from tkinter import messagebox
-from PIL import Image
+import sys
+from pathlib import Path
 from datetime import datetime, timedelta
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
-import mysql.connector
-from dotenv import load_dotenv
 from typing import Dict, Any, Optional
 
+# Adicionar diretório pai ao path
+sys.path.append(str(Path(__file__).parent.parent))
 
-class HubXPTokenExtractor:
-    """Extrator de tokens do Hub XP - Versão Simplificada"""
+
+__tags__ = ['autenticacao', 'hub-xp', 'token', 'mysql', 'gui', 'selenium']
+
+
+class HubXPTokenExtractorSimplified:
+    """Extrator de tokens do Hub XP - Versão Simplificada para arquitetura modular"""
 
     # Cores da interface
     AZUL_PRINCIPAL = "#071d5c"
@@ -34,11 +47,15 @@ class HubXPTokenExtractor:
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
-        self.base_folder = os.path.dirname(os.path.abspath(__file__))
-        self.log_path = os.path.join(self.base_folder, "hub_token.log")
-        self.icon_path = os.path.join(self.base_folder, "icone.png")
-        self.user_config_path = os.path.join(
-            self.base_folder, "user_config.json")
+        self.base_folder = Path(__file__).parent
+        self.log_path = self.base_folder / "logs" / "hub_token_simplified.log"
+        self.icon_path = self.base_folder / "icone.png"
+        self.user_config_path = self.base_folder / \
+            "configs" / "user_config_simplified.json"
+
+        # Criar diretórios se não existirem
+        self.log_path.parent.mkdir(exist_ok=True, parents=True)
+        self.user_config_path.parent.mkdir(exist_ok=True, parents=True)
 
         self.setup_logging()
         self.load_env()
@@ -60,7 +77,9 @@ class HubXPTokenExtractor:
 
     def load_env(self):
         """Carrega configurações do banco"""
-        load_dotenv()
+        env_file = self.base_folder / '.env'
+        load_dotenv(env_file)
+
         self.db_config = {
             'host': os.getenv('DB_HOST'),
             'port': int(os.getenv('DB_PORT', 3306)),
@@ -124,7 +143,7 @@ class HubXPTokenExtractor:
         """Retorna caminho do ChromeDriver"""
         if self.environment == 'windows':
             paths = [
-                os.path.join(self.base_folder, 'chromedriver.exe'),
+                str(self.base_folder / 'chromedriver.exe'),
                 'chromedriver.exe'
             ]
             for path in paths:
@@ -145,7 +164,7 @@ class HubXPTokenExtractor:
     def load_icon(self):
         """Carrega ícone se existir"""
         try:
-            if os.path.exists(self.icon_path):
+            if self.icon_path.exists():
                 self.icon = ctk.CTkImage(
                     Image.open(self.icon_path), size=(60, 60))
             else:
@@ -156,7 +175,7 @@ class HubXPTokenExtractor:
     def load_user_config(self):
         """Carrega último login usado"""
         try:
-            if os.path.exists(self.user_config_path):
+            if self.user_config_path.exists():
                 with open(self.user_config_path, 'r', encoding='utf-8') as f:
                     return json.load(f).get('last_login', '')
         except:
@@ -202,7 +221,7 @@ class HubXPTokenExtractor:
 
         # Janela principal
         app = ctk.CTk()
-        app.title("Hub XP - Login")
+        app.title("Hub XP - Login (Simplificado)")
         app.geometry("400x430")
         app.resizable(False, False)
 
@@ -216,8 +235,8 @@ class HubXPTokenExtractor:
         frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         # Título
-        title = ctk.CTkLabel(frame, text="Hub XP - Autenticação",
-                             font=ctk.CTkFont(size=20, weight="bold"),
+        title = ctk.CTkLabel(frame, text="Hub XP - Autenticação (Simplificado)",
+                             font=ctk.CTkFont(size=18, weight="bold"),
                              text_color=self.AZUL_PRINCIPAL)
         title.pack(pady=(20, 30))
 
@@ -268,14 +287,15 @@ class HubXPTokenExtractor:
 
         return result
 
-    def setup_driver(self) -> bool:
+    def setup_driver(self, headless: bool = True) -> bool:
         """Configuração do WebDriver baseada no ambiente"""
         try:
             options = Options()
 
             # Configurações comuns
             options.add_argument("--disable-gpu")
-            options.add_argument("--headless=new")
+            if headless:
+                options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-web-security")
@@ -313,15 +333,9 @@ class HubXPTokenExtractor:
 
         except WebDriverException as e:
             self.logger.error(f"Erro WebDriver: {e}")
-            if self.environment in ['wsl', 'linux']:
-                messagebox.showerror("Erro", "Chrome/Chromium não encontrado!")
-            else:
-                messagebox.showerror(
-                    "Erro", "Chrome ou ChromeDriver não encontrado!")
             return False
         except Exception as e:
             self.logger.error(f"Erro inesperado: {e}")
-            messagebox.showerror("Erro", f"Erro ao configurar navegador: {e}")
             return False
 
     def perform_login(self, credentials: Dict[str, Any]) -> bool:
@@ -461,7 +475,6 @@ class HubXPTokenExtractor:
 
         except mysql.connector.Error as e:
             self.logger.error(f"Erro no banco: {e}")
-            messagebox.showerror("Erro", f"Erro no banco de dados: {e}")
             return False
         except Exception as e:
             self.logger.error(f"Erro ao salvar token: {e}")
@@ -475,66 +488,106 @@ class HubXPTokenExtractor:
         except:
             pass
 
-    def run(self) -> bool:
-        """Execução principal"""
+    def run(self, headless: bool = True, **kwargs) -> Dict[str, Any]:
+        """Execução principal para integração modular"""
         try:
+            self.logger.info(
+                "Iniciando extração de token (versão simplificada)")
+
             # Obtém credenciais
             credentials = self.get_credentials()
             if credentials.get('cancelled', True):
-                self.logger.info("Operação cancelada")
-                return False
+                self.logger.info("Operação cancelada pelo usuário")
+                return {
+                    'success': False,
+                    'message': 'Operação cancelada pelo usuário',
+                    'token_extraido': False
+                }
 
             # Configura WebDriver
-            if not self.setup_driver():
-                return False
+            if not self.setup_driver(headless=headless):
+                return {
+                    'success': False,
+                    'message': 'Falha na configuração do navegador',
+                    'token_extraido': False
+                }
 
             # Login
             if not self.perform_login(credentials):
-                messagebox.showerror(
-                    "Erro", "Falha no login! Verifique suas credenciais.")
-                return False
+                return {
+                    'success': False,
+                    'message': 'Falha no login - verifique suas credenciais',
+                    'token_extraido': False
+                }
 
             # Extrai token
             token_data = self.extract_token()
             if not token_data:
-                messagebox.showerror("Erro", "Falha ao extrair token!")
-                return False
+                return {
+                    'success': False,
+                    'message': 'Falha ao extrair token do localStorage',
+                    'token_extraido': False
+                }
 
             # Salva no banco
             if not self.save_token_to_db(token_data, credentials['login']):
-                return False
+                return {
+                    'success': False,
+                    'message': 'Falha ao salvar token no banco de dados',
+                    'token_extraido': True,
+                    'token_data': token_data
+                }
 
             # Sucesso
-            messagebox.showinfo("Sucesso", "Token atualizado com sucesso!")
-            self.logger.info("Processo concluído com sucesso")
-            return True
+            self.logger.info("Token extraído e salvo com sucesso")
+            return {
+                'success': True,
+                'message': 'Token atualizado com sucesso!',
+                'token_extraido': True,
+                'user_login': credentials['login'],
+                'expires_at': token_data['expires_at'].isoformat(),
+                'extracted_at': token_data['extracted_at'].isoformat()
+            }
 
         except Exception as e:
             self.logger.error(f"Erro geral: {e}")
-            messagebox.showerror("Erro", f"Erro inesperado: {e}")
-            return False
+            return {
+                'success': False,
+                'message': f'Erro inesperado: {str(e)}',
+                'token_extraido': False
+            }
         finally:
             self.cleanup()
 
 
-def main() -> bool:
-    """Função principal"""
+# Função principal para uso na arquitetura modular
+def renovar_token_simplificado(headless: bool = True, **kwargs):
+    """
+    Renova token do Hub XP usando interface GUI simplificada
+
+    Args:
+        headless: Executar navegador em modo headless (padrão: True)
+        **kwargs: Parâmetros adicionais
+
+    Returns:
+        dict: Resultado da operação com detalhes do processo
+    """
     try:
-        extractor = HubXPTokenExtractor()
-        return extractor.run()
+        extractor = HubXPTokenExtractorSimplified()
+        return extractor.run(headless=headless, **kwargs)
     except Exception as e:
-        logging.error(f"Erro fatal: {e}")
-        return False
+        return {
+            'success': False,
+            'message': f'Erro na inicialização: {str(e)}',
+            'token_extraido': False
+        }
 
 
-def extract_hub_token() -> bool:
-    """Função para uso como módulo"""
-    try:
-        return HubXPTokenExtractor().run()
-    except Exception as e:
-        logging.error(f"Erro no módulo: {e}")
-        return False
+# Alias para compatibilidade
+renovar_token_gui = renovar_token_simplificado
 
 
 if __name__ == "__main__":
-    main()
+    # Execução standalone
+    result = renovar_token_simplificado(headless=True)
+    print(f"Resultado: {result}")

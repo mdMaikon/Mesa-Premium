@@ -1,0 +1,41 @@
+{
+  "Contratos a Termo": {
+    "ativo": true,
+    "pasta_trabalho": "",
+    "arquivo_padrao": "Termos_Rolagem_YYYY-MM-DD.xlsx",
+    "arquivo_png": "Termos_Rolagem_YYYY-MM-DD.png",
+    "gera_png": true,
+    "move_historico": true,
+    "copia_clipboard": true
+  },
+  "Ordens - Op. Estruturadas": {
+    "ativo": true,
+    "pasta_trabalho": "",
+    "arquivo_padrao": "Estruturadas_YYYY-MM-DD.xlsx",
+    "gera_png": false,
+    "move_historico": true,
+    "copia_clipboard": false
+  },
+  "Processar Cetipados": {
+    "ativo": true,
+    "pasta_trabalho": "",
+    "arquivo_padrao": "Posicoes_Cetipados_YYYY-MM-DD.xlsx",
+    "arquivo_png": "Desagios_Cetipados_YYYY-MM-DD.png",
+    "gera_png": true,
+    "move_historico": true,
+    "copia_clipboard": true
+  },
+  "Renovar Token": {
+    "ativo": true,
+    "pasta_trabalho": "",
+    "arquivo_verificar": "hub_config.json",
+    "verificar_atualizacao": true
+  },
+  "Minimo por Ordem": {
+    "ativo": true,
+    "pasta_trabalho": "",
+    "arquivo_limpar": "Minimo.xlsx",
+    "limpar_colunas": true,
+    "manter_coluna": "A"
+  }
+}

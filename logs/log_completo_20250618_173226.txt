@@ -1,0 +1,6 @@
+=== LOG COMPLETO DO SISTEMA ===
+
+[2025-06-18 17:29:35.054451] Carregando automações...
+[2025-06-18 17:29:35.082940] Encontradas 2 automações
+[2025-06-18 17:29:35.980514] Iniciando execução de token simplificado
+[2025-06-18 17:30:11.300448] Erro durante execução de token: Python type dict cannot be converted

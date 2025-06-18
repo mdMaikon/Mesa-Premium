@@ -107,7 +107,7 @@ A aplicação inclui configuração sofisticada do WebDriver que manipula:
 - Extração de token usa inspeção do localStorage via execução JavaScript
 
 ### Tratamento de Erros
-- Log abrangente em `hub_extractor.log`
+- Log abrangente em `hub_token.log`
 - Mensagens de erro específicas por plataforma para dependências ausentes
 - Degradação graciosa e relatórios de erro amigáveis ao usuário
 
