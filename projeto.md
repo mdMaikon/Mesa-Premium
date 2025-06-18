@@ -1,10 +1,3 @@
-Com certeza! Aqui está o plano completo formatado em Markdown (`.md`), pronto para ser salvo em um arquivo.
-
-Você pode copiar e colar o texto abaixo em um editor de texto (como VS Code, Notepad++, etc.) e salvar com a extensão `.md` (por exemplo, `plano_de_projeto.md`).
-
----
-
-````markdown
 # Plano de Projeto: Evolução de Automações Python com Banco de Dados MySQL
 
 Este documento descreve um plano para migrar um projeto de automações em Python, atualmente baseado em scripts locais e planilhas Excel, para uma arquitetura centralizada utilizando um banco de dados MySQL, visando maior profissionalismo, escalabilidade e facilidade de manutenção.

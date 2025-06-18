@@ -35,7 +35,7 @@ class HubXPTokenExtractor:
         ctk.set_default_color_theme("blue")
 
         self.base_folder = os.path.dirname(os.path.abspath(__file__))
-        self.log_path = os.path.join(self.base_folder, "hub_extractor.log")
+        self.log_path = os.path.join(self.base_folder, "hub_token.log")
         self.icon_path = os.path.join(self.base_folder, "icone.png")
         self.user_config_path = os.path.join(
             self.base_folder, "user_config.json")
@@ -147,7 +147,7 @@ class HubXPTokenExtractor:
         try:
             if os.path.exists(self.icon_path):
                 self.icon = ctk.CTkImage(
-                    Image.open(self.icon_path), size=(48, 48))
+                    Image.open(self.icon_path), size=(60, 60))
             else:
                 self.icon = None
         except Exception:
