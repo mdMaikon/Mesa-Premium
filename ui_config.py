@@ -82,7 +82,7 @@ class UIConstants:
     CARD_HEIGHT = 60
     BUTTON_HEIGHT_NORMAL = 32
     BUTTON_HEIGHT_PRIMARY = 36
-    DETAILS_SECTION_HEIGHT = 180  # Altura fixa da seção de detalhes
+    DETAILS_SECTION_HEIGHT = 250  # Altura fixa da seção de detalhes
 
     # Raios
     CORNER_RADIUS_CARD = 8
