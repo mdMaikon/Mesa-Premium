@@ -4,16 +4,35 @@ Este arquivo fornece orientações para o Claude Code (claude.ai/code) quando tr
 
 ## Visão Geral do Projeto
 
-Este é um projeto de automação Python profissional que extrai tokens de autenticação do Hub XP (https://hub.xpi.com.br/) usando Selenium WebDriver e os armazena em um banco de dados MySQL hospedado na Hostinger. O projeto possui uma arquitetura modular baseada em princípios de Clean Architecture, com uma GUI moderna construída com CustomTkinter e suporta execução multiplataforma (Windows, Linux, WSL).
+Este é um projeto de automação Python **enterprise-grade** que extrai tokens de autenticação do Hub XP (https://hub.xpi.com.br/) usando Selenium WebDriver e os armazena em um banco de dados MySQL hospedado na Hostinger. O projeto possui uma **arquitetura moderna** baseada em **CQRS Pattern**, **DI Container** e princípios de Clean Architecture, com uma GUI moderna construída com CustomTkinter e suporta execução multiplataforma (Windows, Linux, WSL).
 
-### Arquitetura Modular Implementada
+### **Padrões Arquiteturais Implementados:**
+- ✅ **CQRS (Command Query Responsibility Segregation)** - Separação entre operações de escrita e leitura
+- ✅ **Dependency Injection Container** - Desacoplamento máximo entre componentes  
+- ✅ **Mediator Pattern** - Orquestração centralizada via CQRSMediator
+- ✅ **Registry Pattern** - Registro seguro de automações e serviços
+- ✅ **Clean Architecture** - Separação clara de responsabilidades por camadas
 
-O projeto foi refatorado de uma classe monolítica (1047 linhas) para uma arquitetura modular distribuída em 5 componentes especializados:
+### Arquitetura Enterprise Implementada
 
+O projeto evoluiu de uma classe monolítica (1047 linhas) para uma **arquitetura enterprise** com padrões modernos distribuída em múltiplas camadas:
+
+#### **Camada de Apresentação:**
 - **UIConfig**: Configurações centralizadas de UI (cores, fontes, constantes)
-- **MessageManager**: Gerenciamento de mensagens e sistema de logs
-- **ExecutionManager**: Coordenação da execução de automações
 - **UIManager**: Criação e gerenciamento da interface do usuário
+- **MessageManager**: Gerenciamento de mensagens e sistema de logs
+
+#### **Camada de Aplicação (CQRS):**
+- **Commands**: Operações de escrita (`ExecuteAutomationCommand`, `ExecuteTokenRenewalCommand`)
+- **Queries**: Operações de leitura (`GetActiveProcessesCountQuery`, `IsProcessActiveQuery`)  
+- **Handlers**: Processadores especializados (`ExecuteAutomationCommandHandler`, `ProcessStatusQueryHandler`)
+- **Mediator**: Orquestração centralizada (`CQRSMediator`)
+
+#### **Camada de Infraestrutura:**
+- **DIContainer**: Injeção de dependência com detecção de ciclos (`di_container.py`)
+- **ServiceRegistry**: Configuração centralizada de serviços (`service_registry.py`)
+- **ExecutionManagerCQRS**: Nova implementação baseada em CQRS (`execution_manager_cqrs.py`)
+- **AutomationRegistry**: Sistema seguro de registro de automações (`automation_registry.py`)
 - **MenuAutomacoes**: Orquestração principal (reduzida para 280 linhas)
 
 ## Comandos Comuns
@@ -33,7 +52,7 @@ chmod +x install_chrome_wsl.sh
 
 ### Executando a Aplicação
 ```bash
-# Interface principal do menu
+# Interface principal do menu (nova arquitetura CQRS)
 python menu_principal.py
 
 # Extração direta de token
@@ -41,6 +60,16 @@ python renovar_token.py
 
 # Importar como módulo
 python -c "from renovar_token import extract_hub_token; extract_hub_token()"
+
+# Testar DI Container
+python -c "from service_registry import get_configured_container; print('DI OK!')"
+
+# Executar testes unitários
+python test_di_container.py
+python test_cqrs.py
+
+# Testar CQRS Mediator
+python -c "from execution_manager_cqrs import ExecutionManagerCQRS; print('CQRS OK!')"
 ```
 
 ### Operações do Banco de Dados
@@ -172,15 +201,134 @@ A aplicação inclui configuração sofisticada do WebDriver que manipula:
 - Extensão de funcionalidades de execução no ExecutionManager
 - Novos estilos e temas através do UIConfig
 
-## Estrutura de Arquivos Refatorada
+## Estrutura de Arquivos Enterprise
 
 ```
 /MenuAutomacoes/
+# Camada de Apresentação
 ├── menu_principal.py          # Orquestração principal (280 linhas)
 ├── ui_config.py              # Configurações centralizadas da UI
-├── message_manager.py        # Gerenciador de mensagens e logs
-├── execution_manager.py      # Gerenciador de execução de automações
 ├── ui_manager.py            # Gerenciador da interface do usuário
+├── message_manager.py        # Gerenciador de mensagens e logs
+
+# Camada de Aplicação (CQRS)
+├── cqrs_commands.py          # Commands (operações de escrita)
+├── cqrs_queries.py           # Queries (operações de leitura)
+├── cqrs_handlers.py          # Handlers especializados
+├── cqrs_mediator.py          # Mediator para orquestração
+
+# Camada de Infraestrutura
+├── di_container.py           # DI Container com detecção de ciclos
+├── service_registry.py       # Registro centralizado de serviços
+├── execution_manager_cqrs.py # Nova implementação CQRS
+├── execution_manager.py      # Implementação legacy (compatibilidade)
+├── automation_registry.py    # Registro seguro de automações
+├── secure_logging.py         # Sistema de logging seguro
+
+# Funcionalidades de Negócio
 ├── renovar_token.py         # Extrator de tokens Hub XP
-└── ...outros arquivos existentes
+├── renovar_token_simplified.py # Versão simplificada
+├── database.py              # Gerenciador de banco MySQL
+├── path_manager.py          # Gerenciador de caminhos
+├── automacao_manager.py     # Gerenciador de automações
+
+# Testes
+├── test_di_container.py     # Testes do DI Container (11 testes)
+├── test_cqrs.py            # Testes do CQRS (18 testes)
+
+# Configuração
+├── requirements.txt         # Dependências
+├── setup_menu.bat          # Setup Windows
+└── install_chrome_wsl.sh   # Setup Linux/WSL
+```
+
+## Migração de Automações para Nova Arquitetura
+
+### Como Migrar Automações Existentes
+
+Com a nova arquitetura CQRS implementada, as automações devem seguir os padrões enterprise:
+
+#### **1. Criação via Commands/Queries:**
+```python
+# Para automações que modificam estado (Commands)
+from cqrs_commands import ExecuteAutomationCommand
+from cqrs_mediator import CQRSMediator
+
+def executar_nova_automacao():
+    mediator = CQRSMediator()
+    command = ExecuteAutomationCommand(
+        automation_name="minha_nova_automacao",
+        parameters={"param1": "valor"}
+    )
+    result = mediator.send_command(command)
+    return result
+
+# Para consultas de status (Queries)  
+from cqrs_queries import GetActiveProcessesCountQuery
+
+def verificar_processos_ativos():
+    mediator = CQRSMediator()
+    query = GetActiveProcessesCountQuery()
+    result = mediator.send_query(query)
+    return result.data
+```
+
+#### **2. Registro via DI Container:**
+```python
+# service_registry.py - adicionar nova automação
+def configure_new_automation(container: DIContainer):
+    container.register_transient(
+        MinhaNovaAutomacao,
+        lambda: MinhaNovaAutomacao(
+            container.resolve(DatabaseManager),
+            container.resolve(PathManager)
+        )
+    )
+```
+
+#### **3. Handler Especializado:**
+```python
+# handlers/minha_automacao_handler.py
+class MinhaAutomacaoHandler(CommandHandler):
+    def __init__(self, db_manager: DatabaseManager):
+        self.db_manager = db_manager
+    
+    def handle(self, command: ExecuteMinhaAutomacaoCommand) -> CommandResult:
+        try:
+            # Lógica da automação
+            resultado = self._executar_logica(command.parameters)
+            
+            return CommandResult(
+                success=True,
+                message="Automação concluída",
+                data=resultado
+            )
+        except Exception as e:
+            return CommandResult(
+                success=False,
+                message=f"Erro: {str(e)}"
+            )
+```
+
+### **Benefícios da Nova Arquitetura para Automações:**
+
+1. **Testabilidade Máxima:** Cada automação pode ser testada isoladamente
+2. **Desacoplamento:** Dependências injetadas automaticamente via DI
+3. **Padronização:** Todas seguem o mesmo padrão Command/Query
+4. **Monitoramento:** Execuções rastreadas automaticamente
+5. **Escalabilidade:** Fácil adição de novas automações
+6. **Manutenibilidade:** Lógica de negócio isolada em handlers
+
+### **Estrutura Recomendada para Novas Automações:**
+```
+automacoes/
+├── commands/
+│   └── execute_minha_automacao_command.py
+├── queries/  
+│   └── get_minha_automacao_status_query.py
+├── handlers/
+│   ├── minha_automacao_command_handler.py
+│   └── minha_automacao_query_handler.py
+└── entities/
+    └── minha_automacao_entity.py
 ```
