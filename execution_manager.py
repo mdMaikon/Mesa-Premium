@@ -182,6 +182,10 @@ class ExecutionManager:
                 self.db_manager.registrar_fim_execucao(
                     execution_id, 'ERRO', mensagem_erro=mensagem_erro
                 )
+        
+        # Forçar atualização do scroll após conclusão do token
+        if self.message_manager and hasattr(self.message_manager, 'force_scroll_update'):
+            self.message_manager.force_scroll_update()
     
     def _handle_automation_error(self, automation_name: str, error: Exception) -> None:
         """Trata erro na execução de automação"""
@@ -204,6 +208,10 @@ class ExecutionManager:
                 )
             except:
                 pass
+        
+        # Forçar atualização do scroll após erro do token
+        if self.message_manager and hasattr(self.message_manager, 'force_scroll_update'):
+            self.message_manager.force_scroll_update()
     
     def _cleanup_automation_execution(self, automation_name: str) -> None:
         """Limpa recursos após execução de automação"""
@@ -218,6 +226,10 @@ class ExecutionManager:
         # Reabilitar botão de execução
         if self.button_state_callback:
             self.button_state_callback(automation_name, True)
+        
+        # Forçar atualização do scroll após conclusão
+        if self.message_manager and hasattr(self.message_manager, 'force_scroll_update'):
+            self.message_manager.force_scroll_update()
     
     def get_active_processes_count(self) -> int:
         """Retorna número de processos ativos"""

@@ -6,6 +6,7 @@ Gerencia mensagens do sistema e logs internos
 import datetime
 import customtkinter as ctk
 from typing import List, Callable, Optional
+from tkinter import TclError
 from ui_config import UIColors, UIConstants, UIConfig
 
 class MessageManager:
@@ -63,7 +64,7 @@ class MessageManager:
         # Remover mensagens antigas
         self._cleanup_old_messages()
         
-        # Auto-scroll para a mensagem mais recente
+        # Auto-scroll para a mensagem mais recente (com delay menor para fluidez)
         self._scroll_to_bottom()
     
     def _cleanup_old_messages(self) -> None:
@@ -74,11 +75,23 @@ class MessageManager:
     
     def _scroll_to_bottom(self) -> None:
         """Faz scroll automático para a mensagem mais recente"""
-        try:
-            self.messages_container._parent_canvas.yview_moveto(1.0)
-        except AttributeError:
-            # Fallback se a estrutura interna mudar
-            pass
+        def do_scroll():
+            try:
+                # Método mais confiável para CTkScrollableFrame
+                if hasattr(self.messages_container, '_parent_canvas'):
+                    canvas = self.messages_container._parent_canvas
+                    # Aguardar um frame para garantir que o conteúdo foi renderizado
+                    self.messages_container.after(1, lambda: canvas.yview_moveto(1.0))
+                elif hasattr(self.messages_container, '_scrollbar'):
+                    # Alternativa usando scrollbar
+                    scrollbar = self.messages_container._scrollbar
+                    self.messages_container.after(1, lambda: scrollbar.set(1.0, 1.0))
+            except (AttributeError, TclError):
+                # Fallback se a estrutura interna mudar
+                pass
+        
+        # Executar scroll após um pequeno delay para garantir renderização
+        self.messages_container.after(10, do_scroll)
     
     def add_log_entry(self, message: str) -> None:
         """Adiciona entrada apenas no log interno"""
@@ -93,6 +106,26 @@ class MessageManager:
         for msg_frame in self.messages_list:
             msg_frame.destroy()
         self.messages_list.clear()
+    
+    def force_scroll_update(self) -> None:
+        """Força atualização do scroll - útil após múltiplas mensagens"""
+        def update_scroll():
+            try:
+                # Atualizar o layout primeiro
+                self.messages_container.update_idletasks()
+                
+                # Então fazer o scroll
+                if hasattr(self.messages_container, '_parent_canvas'):
+                    canvas = self.messages_container._parent_canvas
+                    # Configurar scroll region
+                    canvas.configure(scrollregion=canvas.bbox("all"))
+                    # Ir para o final
+                    canvas.yview_moveto(1.0)
+            except (AttributeError, TclError):
+                pass
+        
+        # Executar após um delay maior para garantir que tudo foi renderizado
+        self.messages_container.after(50, update_scroll)
     
     def export_logs(self, file_path: str) -> bool:
         """Exporta logs para arquivo"""
