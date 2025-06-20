@@ -244,9 +244,11 @@ class UIManager:
         details_frame = ctk.CTkFrame(parent, **UIConfig.get_frame_style("card"))
         details_frame.grid(row=0, column=1, sticky="nsew")
         
-        # Seção de detalhes
+        # Seção de detalhes (altura fixa para consistência)
         details_section = ctk.CTkFrame(details_frame, **UIConfig.get_frame_style("section"))
         details_section.pack(fill='x', padx=UIConstants.PADDING_MAIN, pady=(UIConstants.PADDING_MAIN, 10))
+        details_section.pack_propagate(False)  # Impede redimensionamento automático
+        details_section.configure(height=UIConstants.DETAILS_SECTION_HEIGHT)  # Altura fixa
         
         # Título
         title_details = ctk.CTkLabel(
@@ -305,7 +307,7 @@ class UIManager:
         )
         self.btn_open_folder.pack()
         
-        # Seção de mensagens
+        # Seção de mensagens (preenche espaço restante)
         messages_section = ctk.CTkFrame(details_frame, **UIConfig.get_frame_style("section"))
         messages_section.pack(fill='both', expand=True, padx=UIConstants.PADDING_MAIN, pady=(10, UIConstants.PADDING_MAIN))
         
