@@ -221,7 +221,7 @@ class HubXPTokenExtractorSimplified:
 
         # Janela principal
         app = ctk.CTk()
-        app.title("Hub XP - Login (Simplificado)")
+        app.title("Hub XP - Login")
         app.geometry("400x430")
         app.resizable(False, False)
 
@@ -235,7 +235,7 @@ class HubXPTokenExtractorSimplified:
         frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         # Título
-        title = ctk.CTkLabel(frame, text="Hub XP - Autenticação (Simplificado)",
+        title = ctk.CTkLabel(frame, text="Hub XP - Autenticação",
                              font=ctk.CTkFont(size=18, weight="bold"),
                              text_color=self.AZUL_PRINCIPAL)
         title.pack(pady=(20, 30))
@@ -492,7 +492,7 @@ class HubXPTokenExtractorSimplified:
         """Execução principal para integração modular"""
         try:
             self.logger.info(
-                "Iniciando extração de token (versão simplificada)")
+                "Iniciando extração de token...")
 
             # Obtém credenciais
             credentials = self.get_credentials()

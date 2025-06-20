@@ -1,6 +1,6 @@
 """
-Menu Principal Refatorado
-Versão modular usando managers especializados
+Menu Principal Refatorado com DI Container
+Versão modular usando injeção de dependência
 """
 
 import customtkinter as ctk
@@ -8,7 +8,11 @@ import datetime
 import json
 from pathlib import Path
 
-# Importar managers e componentes
+# Importar DI Container e configuração
+from service_registry import get_configured_container
+from di_container import DIContainer
+
+# Importar managers para type hints
 from path_manager import PathManager
 from automacao_config import AutomacaoConfig
 from database import DatabaseManager
@@ -21,30 +25,30 @@ from ui_config import UIConstants
 class MenuAutomacoes:
     """Classe principal do menu de automações - versão refatorada"""
     
-    def __init__(self):
-        # Inicializar managers de backend
-        self.path_manager = PathManager()
-        self.automacao_config = AutomacaoConfig(self.path_manager)
-        self.db_manager = DatabaseManager()
-        self.automacao_manager = AutomacaoManager(self.path_manager, self.db_manager)
+    def __init__(self, container: DIContainer = None):
+        # Usar container configurado ou criar um novo
+        self.container = container if container else get_configured_container()
+        
+        # Resolver dependências via DI Container
+        self.path_manager = self.container.resolve(PathManager)
+        self.automacao_config = self.container.resolve(AutomacaoConfig)
+        self.db_manager = self.container.resolve(DatabaseManager)
+        self.automacao_manager = self.container.resolve(AutomacaoManager)
         
         # Configurar janela principal
         self.root = ctk.CTk()
         
-        # Inicializar UI Manager
+        # Inicializar UI Manager (ainda não migrado para DI)
         self.ui_manager = UIManager(self.root)
         self.ui_manager.create_interface()
         
-        # Obter message manager
+        # Obter message manager da UI (ainda não migrado)
         self.message_manager = self.ui_manager.get_message_manager()
         
-        # Inicializar execution manager
-        self.execution_manager = ExecutionManager(
-            self.automacao_manager,
-            self.db_manager,
-            self.path_manager,
-            self.message_manager
-        )
+        # Resolver execution manager via DI Container
+        # Sobrescrever o message_manager para usar o da UI
+        self.execution_manager = self.container.resolve(ExecutionManager)
+        self.execution_manager.message_manager = self.message_manager
         
         # Configurar callbacks da UI
         self._setup_ui_callbacks()

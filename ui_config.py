@@ -10,15 +10,16 @@ from typing import Dict, Any
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
+
 class UIColors:
     """Paleta de cores da aplicação"""
-    
+
     # Cores principais
     PRIMARY = '#001d99'
     PRIMARY_HOVER = '#002064'
     ACCENT = '#0092ff'
     ACCENT_HOVER = '#007ad8'
-    
+
     # Cores de status
     SUCCESS = '#28a745'
     SUCCESS_HOVER = '#218838'
@@ -27,20 +28,20 @@ class UIColors:
     WARNING = '#ffc107'
     INFO = '#17a2b8'
     EXECUTING = '#ff8c00'
-    
+
     # Cores de fundo
     BG_PRIMARY = '#ffffff'
-    BG_SECONDARY = '#f8f9fa'
-    
+    BG_SECONDARY = "#ebebeb"
+
     # Cores de texto
     TEXT_PRIMARY = '#000000'
     TEXT_SECONDARY = '#6c757d'
-    
+
     # Cores de borda
     BORDER = '#dee2e6'
     BORDER_LIGHT = 'gray70'
     BORDER_ACTIVE = 'gray60'
-    
+
     @classmethod
     def get_status_color(cls, status: str) -> str:
         """Retorna cor baseada no status"""
@@ -54,16 +55,17 @@ class UIColors:
         }
         return colors.get(status, 'gray60')
 
+
 class UIConstants:
     """Constantes da interface"""
-    
+
     # Janela principal
     WINDOW_TITLE = "Mesa Premium • Automações"
     MIN_WIDTH = 1000
     MIN_HEIGHT = 600
     DEFAULT_WIDTH = 1200
     DEFAULT_HEIGHT = 700
-    
+
     # Fontes
     FONT_FAMILY = "Segoe UI"
     FONT_SIZE_TITLE = 24
@@ -72,7 +74,7 @@ class UIConstants:
     FONT_SIZE_NORMAL = 13
     FONT_SIZE_SMALL = 11
     FONT_SIZE_TINY = 10
-    
+
     # Dimensões
     PADDING_MAIN = 20
     PADDING_SECTION = 15
@@ -80,15 +82,15 @@ class UIConstants:
     CARD_HEIGHT = 60
     BUTTON_HEIGHT_NORMAL = 32
     BUTTON_HEIGHT_PRIMARY = 36
-    
+
     # Raios
     CORNER_RADIUS_CARD = 8
     CORNER_RADIUS_BUTTON = 6
     CORNER_RADIUS_SMALL = 6
-    
+
     # Mensagens
     MAX_MESSAGES = 5
-    
+
     # Ícones de status
     STATUS_ICONS = {
         'Pronto': '🟢',
@@ -98,7 +100,7 @@ class UIConstants:
         'Atualizado': '✓',
         'Interrompido': '⏸'
     }
-    
+
     # Ícones de tipo de mensagem
     MESSAGE_ICONS = {
         'info': 'ℹ️',
@@ -107,9 +109,10 @@ class UIConstants:
         'warning': '⚠️'
     }
 
+
 class UIConfig:
     """Configuração centralizada da UI"""
-    
+
     @staticmethod
     def get_font(size: int = None, weight: str = "normal", family: str = None) -> ctk.CTkFont:
         """Cria fonte padronizada"""
@@ -118,7 +121,7 @@ class UIConfig:
             size=size or UIConstants.FONT_SIZE_NORMAL,
             weight=weight
         )
-    
+
     @staticmethod
     def get_button_style(style_type: str = "normal") -> Dict[str, Any]:
         """Retorna estilos pré-definidos para botões"""
@@ -157,7 +160,7 @@ class UIConfig:
             }
         }
         return styles.get(style_type, styles["secondary"])
-    
+
     @staticmethod
     def get_frame_style(style_type: str = "normal") -> Dict[str, Any]:
         """Retorna estilos pré-definidos para frames"""
@@ -170,7 +173,7 @@ class UIConfig:
             },
             "section": {
                 "corner_radius": UIConstants.CORNER_RADIUS_SMALL,
-                "fg_color": UIColors.BG_PRIMARY
+                "fg_color": UIColors.BG_SECONDARY
             },
             "transparent": {
                 "fg_color": "transparent"
