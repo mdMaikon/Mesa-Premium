@@ -36,7 +36,6 @@ class UIManager:
         self.container: Optional[ctk.CTkFrame] = None
         self.scroll_frame: Optional[ctk.CTkScrollableFrame] = None
         self.messages_scroll: Optional[ctk.CTkScrollableFrame] = None
-        self.search_field: Optional[ctk.CTkEntry] = None
         
         # Labels de informação
         self.automation_selected_label: Optional[ctk.CTkLabel] = None
@@ -205,7 +204,7 @@ class UIManager:
         
         shortcuts_label = ctk.CTkLabel(
             shortcuts_container,
-            text="Enter: Executar | Ctrl+T: Token | F5: Atualizar | Ctrl+F: Pesquisar",
+            text="Enter: Executar | Ctrl+T: Token | F5: Atualizar",
             font=UIConfig.get_font(UIConstants.FONT_SIZE_SMALL),
             text_color="gray40"
         )
@@ -225,23 +224,6 @@ class UIManager:
         )
         title_list.pack(pady=(UIConstants.PADDING_MAIN, 10), padx=UIConstants.PADDING_MAIN, anchor='w')
         
-        # Campo de pesquisa
-        search_frame = ctk.CTkFrame(list_frame, fg_color="transparent")
-        search_frame.pack(fill='x', padx=UIConstants.PADDING_MAIN, pady=(0, UIConstants.PADDING_SECTION))
-        
-        self.search_field = ctk.CTkEntry(
-            search_frame,
-            placeholder_text="🔍 Pesquisar automações...",
-            font=UIConfig.get_font(UIConstants.FONT_SIZE_SUBTITLE),
-            height=UIConstants.BUTTON_HEIGHT_NORMAL,
-            corner_radius=UIConstants.CORNER_RADIUS_BUTTON,
-            border_width=1,
-            border_color="gray60",
-            fg_color="white",
-            text_color="black",
-            placeholder_text_color="gray50"
-        )
-        self.search_field.pack(fill='x')
         
         # Scrollable frame para as automações
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -444,8 +426,6 @@ class UIManager:
         if self.btn_open_folder and 'open_folder' in callbacks:
             self.btn_open_folder.configure(command=callbacks['open_folder'])
         
-        if self.search_field and 'filter_automations' in callbacks:
-            self.search_field.bind('<KeyRelease>', callbacks['filter_automations'])
     
     def select_automation(self, name: str):
         """Seleciona uma automação"""
@@ -535,8 +515,6 @@ class UIManager:
         self.filtered_cards.clear()
         self.selected_automation = None
         
-        if self.search_field:
-            self.search_field.delete(0, 'end')
     
     def get_message_manager(self) -> Optional[MessageManager]:
         """Retorna o message manager"""

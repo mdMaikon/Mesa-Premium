@@ -74,7 +74,6 @@ class MenuAutomacoes:
             'update_automations': self.load_automations,
             'export_logs': self.export_logs,
             'open_folder': self.open_specific_folder,
-            'filter_automations': self.filter_automations
         }
         self.ui_manager.set_callbacks(callbacks)
     
@@ -95,7 +94,6 @@ class MenuAutomacoes:
             '<Control-r>': self.load_automations,
             '<Control-l>': self.export_logs,
             '<Control-o>': self.open_specific_folder,
-            '<Control-f>': lambda: self.ui_manager.search_field.focus() if self.ui_manager.search_field else None,
             '<Escape>': self.try_quit
         }
         self.ui_manager.setup_keyboard_shortcuts(shortcuts)
@@ -204,43 +202,6 @@ class MenuAutomacoes:
         except Exception as e:
             self.message_manager.add_message(f"Erro ao exportar logs: {str(e)}", 'error')
     
-    def filter_automations(self, event=None):
-        """Filtra automações baseado no texto de pesquisa"""
-        if not self.ui_manager.search_field:
-            return
-        
-        search_term = self.ui_manager.search_field.get().lower().strip()
-        
-        # Limpar cards atuais
-        for widget in self.ui_manager.scroll_frame.winfo_children():
-            widget.destroy()
-        
-        # Resetar lista filtrada
-        self.ui_manager.filtered_cards.clear()
-        
-        # Filtrar e recriar cards
-        for card in self.ui_manager.automation_cards:
-            if not search_term or search_term in card.name.lower():
-                # Recriar o card
-                new_card = self.ui_manager.create_automation_card(card.name, card.description, card.status)
-                self.ui_manager.filtered_cards.append(new_card)
-                
-                # Aplicar seleção se necessário
-                if self.ui_manager.selected_automation == card.name:
-                    self.ui_manager.select_automation(card.name)
-        
-        # Atualizar contador
-        total_found = len(self.ui_manager.automation_cards)
-        total_filtered = len(self.ui_manager.filtered_cards)
-        
-        if search_term:
-            self.ui_manager.automation_counter.configure(
-                text=f"{total_filtered} de {total_found} automações"
-            )
-        else:
-            self.ui_manager.automation_counter.configure(
-                text=f"{total_found} automações disponíveis"
-            )
     
     def try_quit(self):
         """Tenta sair da aplicação"""
