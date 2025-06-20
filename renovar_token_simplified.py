@@ -470,11 +470,11 @@ class HubXPTokenExtractorSimplified:
             cursor.close()
             conn.close()
 
-            self.logger.info(f"Token salvo para usuário: {user_login}")
+            self.logger.info("Token salvo com sucesso")
             return True
 
         except mysql.connector.Error as e:
-            self.logger.error(f"Erro no banco: {e}")
+            self.logger.error("Erro na operação do banco de dados")
             return False
         except Exception as e:
             self.logger.error(f"Erro ao salvar token: {e}")

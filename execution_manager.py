@@ -5,14 +5,13 @@ Gerencia a execução de automações e tokens
 
 import threading
 import datetime
-import importlib.util
 from typing import Dict, Any, Optional, Callable
-from pathlib import Path
 
 from automacao_manager import AutomacaoManager
 from database import DatabaseManager
 from path_manager import PathManager
 from message_manager import MessageManager
+from automation_registry import AutomationRegistry, TokenExecutorWrapper
 
 class ExecutionManager:
     """Gerenciador de execuções de automações"""
@@ -107,27 +106,21 @@ class ExecutionManager:
             self._cleanup_automation_execution(automation_name)
     
     def _execute_token_thread(self) -> None:
-        """Thread para execução de renovação de token"""
+        """Thread para execução de renovação de token usando Registry seguro"""
         automation_name = "renovar_token_simplificado"
         execution_id = None
         
         try:
-            self.message_manager.add_log_entry("Iniciando execução de token simplificado")
+            self.message_manager.add_log_entry("Iniciando execução de token via AutomationRegistry")
             
             # Registrar início da execução no banco
             execution_id = self.db_manager.registrar_inicio_execucao(automation_name)
             
-            # Importar e executar o módulo diretamente
-            module = self._load_token_module()
-            if not module:
-                raise ValueError("Não foi possível carregar o módulo renovar_token_simplified")
+            # Usar o wrapper seguro para compatibilidade
+            token_executor = TokenExecutorWrapper()
             
-            # Buscar a classe e executar
-            extractor_class = getattr(module, 'HubXPTokenExtractorSimplified')
-            extractor = extractor_class()
-            
-            # Executar
-            resultado = extractor.run(headless=True)
+            # Executar de forma segura
+            resultado = token_executor.run(headless=True)
             
             # Processar resultado
             self._process_token_result(resultado, execution_id)
@@ -136,26 +129,13 @@ class ExecutionManager:
             self._handle_token_error(e, execution_id)
     
     def _load_token_module(self):
-        """Carrega o módulo de renovação de token"""
-        try:
-            base_path = self.path_manager.get_path('base')
-            if base_path is None:
-                raise ValueError("Caminho base não encontrado")
-            
-            spec = importlib.util.spec_from_file_location(
-                "renovar_token_simplified",
-                base_path / "renovar_token_simplified.py"
-            )
-            if spec is None or spec.loader is None:
-                raise ValueError("Spec do módulo não encontrado")
-            
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-            
-        except Exception as e:
-            self.message_manager.add_log_entry(f"Erro ao carregar módulo de token: {str(e)}")
-            raise
+        """DEPRECATED: Método removido por questões de segurança
+        
+        Este método foi removido porque usava exec_module() que permite
+        execução de código arbitrário. Use AutomationRegistry em vez disso.
+        """
+        self.message_manager.add_log_entry("AVISO: _load_token_module() está deprecado. Use AutomationRegistry.")
+        raise DeprecationWarning("Método _load_token_module removido por questões de segurança")
     
     def _process_automation_result(self, automation_name: str, resultado: Any) -> None:
         """Processa resultado da execução de automação"""

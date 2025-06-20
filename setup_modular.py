@@ -144,7 +144,7 @@ def testar_conexao_banco():
             return False
             
     except Exception as e:
-        print(f"✗ Erro ao testar banco: {e}")
+        print("✗ Erro na conexão com banco de dados")
         return False
 
 def criar_automacao_exemplo():

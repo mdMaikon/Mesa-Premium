@@ -139,7 +139,7 @@ class DatabaseManager:
                     nome_automacao, 
                     'EXECUTANDO', 
                     datetime.now(),
-                    usuario or os.getenv('USERNAME', 'desconhecido')
+                    usuario or 'sistema'
                 ))
                 conn.commit()
                 return cursor.lastrowid
