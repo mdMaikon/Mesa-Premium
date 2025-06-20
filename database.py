@@ -150,6 +150,8 @@ class DatabaseManager:
     def registrar_fim_execucao(self, execucao_id, status, mensagem_erro=None, dados_resultado=None):
         """Registra fim de execução de automação"""
         try:
+            import json
+            
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
@@ -165,6 +167,14 @@ class DatabaseManager:
                     fim = datetime.now()
                     tempo_execucao = int((fim - inicio).total_seconds())
                     
+                    # Converter dados_resultado para JSON se for dict/list
+                    dados_resultado_json = None
+                    if dados_resultado is not None:
+                        if isinstance(dados_resultado, (dict, list)):
+                            dados_resultado_json = json.dumps(dados_resultado, ensure_ascii=False)
+                        else:
+                            dados_resultado_json = str(dados_resultado)
+                    
                     query = '''
                         UPDATE automacoes_execucoes 
                         SET status = %s, fim_execucao = %s, tempo_execucao = %s,
@@ -173,7 +183,7 @@ class DatabaseManager:
                     '''
                     cursor.execute(query, (
                         status, fim, tempo_execucao, mensagem_erro, 
-                        dados_resultado, execucao_id
+                        dados_resultado_json, execucao_id
                     ))
                     conn.commit()
                     return True

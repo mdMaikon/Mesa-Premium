@@ -178,20 +178,28 @@ class ExecutionManager:
             mensagem_sucesso = resultado.get('message', 'Token renovado com sucesso')
             self._safe_message(f"✅ {mensagem_sucesso}", 'success')
             
-            # Registrar sucesso no banco
+            # Registrar sucesso no banco (com tratamento de erro separado)
             if execution_id:
-                self.db_manager.registrar_fim_execucao(
-                    execution_id, 'CONCLUIDO', dados_resultado=resultado
-                )
+                try:
+                    self.db_manager.registrar_fim_execucao(
+                        execution_id, 'CONCLUIDO', dados_resultado=resultado
+                    )
+                except Exception as db_error:
+                    self._safe_log(f"Erro ao salvar resultado no banco: {str(db_error)}")
+                    # Não parar a execução por erro de banco
         else:
             mensagem_erro = resultado.get('message', 'Erro na renovação do token') if resultado else 'Falha na execução'
             self._safe_message(f"❌ {mensagem_erro}", 'error')
             
-            # Registrar erro no banco
+            # Registrar erro no banco (com tratamento de erro separado)
             if execution_id:
-                self.db_manager.registrar_fim_execucao(
-                    execution_id, 'ERRO', mensagem_erro=mensagem_erro
-                )
+                try:
+                    self.db_manager.registrar_fim_execucao(
+                        execution_id, 'ERRO', mensagem_erro=mensagem_erro
+                    )
+                except Exception as db_error:
+                    self._safe_log(f"Erro ao salvar erro no banco: {str(db_error)}")
+                    # Não parar a execução por erro de banco
         
         # Parar spinner
         if self.token_spinner_stop_callback:
