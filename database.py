@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Gerenciador de conexão com banco de dados MySQL"""
     
-    def __init__(self):
+    def __init__(self, validate_on_init=True):
         self._load_env()
         self.connection_config = {
             'host': os.getenv('DB_HOST'),
@@ -29,8 +29,10 @@ class DatabaseManager:
             'pool_size': 5,
             'pool_reset_session': True
         }
-        self._validate_config()
-        self._create_tables()
+        
+        if validate_on_init:
+            self._validate_config()
+            self._create_tables()
     
     def _load_env(self):
         """Carrega variáveis do arquivo .env"""
@@ -48,9 +50,17 @@ class DatabaseManager:
         if missing_vars:
             raise ValueError(f"Variáveis de ambiente faltando: {', '.join(missing_vars)}")
     
+    def _ensure_validated(self):
+        """Garante que a configuração foi validada antes do uso"""
+        if not hasattr(self, '_validated'):
+            self._validate_config()
+            self._validated = True
+            self._create_tables()
+    
     @contextmanager
     def get_connection(self):
         """Context manager para conexões seguras"""
+        self._ensure_validated()
         connection = None
         try:
             connection = mysql.connector.connect(**self.connection_config)
@@ -115,12 +125,14 @@ class DatabaseManager:
         }
         
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                for table_name, create_sql in tables.items():
-                    cursor.execute(create_sql)
-                    logger.info(f"Tabela {table_name} verificada/criada")
-                conn.commit()
+            # Conexão direta para evitar recursão
+            connection = mysql.connector.connect(**self.connection_config)
+            cursor = connection.cursor()
+            for table_name, create_sql in tables.items():
+                cursor.execute(create_sql)
+                logger.info(f"Tabela {table_name} verificada/criada")
+            connection.commit()
+            connection.close()
         except Error as e:
             logger.error(f"Erro ao criar tabelas: {e}")
             raise
@@ -326,6 +338,7 @@ class DatabaseManager:
     def test_connection(self):
         """Testa conexão com banco de dados"""
         try:
+            self._ensure_validated()
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1")

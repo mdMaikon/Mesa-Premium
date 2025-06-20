@@ -25,7 +25,10 @@ def configure_services(container: DIContainer) -> DIContainer:
     container.register_instance(PathManager, path_manager)
     
     # DatabaseManager - Singleton (conexão única)
-    db_manager = DatabaseManager()
+    # Durante build, não validar configuração
+    import sys
+    is_building = getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS')
+    db_manager = DatabaseManager(validate_on_init=not is_building)
     container.register_instance(DatabaseManager, db_manager)
     
     # AutomacaoConfig - Singleton (configuração global)
@@ -66,5 +69,12 @@ def get_configured_container() -> DIContainer:
     container = DIContainer()
     return configure_services(container)
 
-# Para compatibilidade - container global configurado
-configured_container = get_configured_container()
+# Para compatibilidade - container global configurado apenas quando necessário
+configured_container = None
+
+def get_global_container():
+    """Obtém container global, inicializando se necessário"""
+    global configured_container
+    if configured_container is None:
+        configured_container = get_configured_container()
+    return configured_container
