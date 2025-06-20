@@ -10,8 +10,10 @@ Sistema de automação Python **enterprise-grade** com arquitetura moderna basea
 ## 📋 Funcionalidades
 
 - ✅ **Extração automatizada** de tokens Hub XP com detecção de MFA
-- ✅ **Banco MySQL** centralizado (Hostinger) com pool de conexões
-- ✅ **Interface moderna** CustomTkinter responsiva
+- ✅ **Banco MySQL** centralizado (Hostinger) com pool de conexões e conversão JSON automática
+- ✅ **Interface moderna** CustomTkinter responsiva com layout consistente
+- ✅ **Spinner animado** com feedback visual em tempo real durante operações
+- ✅ **Sistema de scroll inteligente** com posicionamento automático otimizado
 - ✅ **Multiplataforma** (Windows, Linux, WSL)
 - ✅ **Arquitetura CQRS** com handlers especializados
 - ✅ **DI Container** para desacoplamento máximo
@@ -158,9 +160,27 @@ CREATE TABLE hub_tokens (
 
 ### Características
 - **Pool de conexões** MySQL otimizado
+- **Conversão automática** dict/list → JSON para persistência
 - **Rotação automática** de tokens antigos
 - **Timestamps** preservados do Hub XP
 - **Índices** para consultas rápidas
+- **Tratamento robusto** de erros de conversão de dados
+
+## 🎨 Interface e Experiência do Usuário
+
+### Melhorias Implementadas
+- **✅ Layout Consistente:** Seção de detalhes com altura fixa - não "pula" ao selecionar automações
+- **✅ Spinner Animado:** Indicador visual durante renovação de token com caracteres Unicode
+- **✅ Scroll Inteligente:** Posicionamento automático nas mensagens do sistema
+- **✅ Interface Limpa:** Funcionalidade de pesquisa removida para foco nas funcionalidades essenciais
+- **✅ Feedback Visual:** Estados claros de execução, sucesso e erro
+
+### Características da Interface
+- **Design Responsivo:** Adaptação automática ao redimensionamento
+- **Paleta Corporativa:** Esquema de cores profissional (`#071d5c`, `#810b0b`, `#3a75ce`)
+- **Atalhos de Teclado:** `Enter: Executar | Ctrl+T: Token | F5: Atualizar`
+- **Componentes Modernos:** Cards interativos com indicadores visuais de status
+- **Sistema de Mensagens:** Logs estruturados com timestamps e categorização
 
 ## 🔧 Desenvolvimento
 
@@ -307,6 +327,18 @@ cat .env
 python -c "import mysql.connector; mysql.connector.connect(host='HOST', user='USER', password='PASS')"
 ```
 
+### Erro "Python type dict cannot be converted"
+**Status:** ✅ **RESOLVIDO** - Sistema agora converte automaticamente dict/list para JSON
+- Tokens salvos corretamente no banco como JSON
+- Mensagens de erro precisas (não mais falsos positivos)
+- Tratamento robusto de diferentes tipos de dados
+
+### Problemas de Interface (Layout/Scroll)
+**Status:** ✅ **RESOLVIDO** 
+- Layout com altura fixa - não muda ao selecionar automações
+- Scroll posiciona automaticamente na mensagem mais recente
+- Spinner visual durante operações de token
+
 ### ChromeDriver Issues
 ```bash
 # Linux/WSL: Instalar Chrome
@@ -365,6 +397,13 @@ ls -la automacoes/
 - ✅ **29 testes unitários** (cobertura robusta)
 - ✅ **Segurança enterprise** (vulnerabilidades eliminadas)
 - ✅ **Manutenibilidade máxima** via handlers especializados
+
+### Melhorias de Interface e UX
+- ✅ **Interface estável** com layout consistente
+- ✅ **Feedback visual** com spinner animado em operações
+- ✅ **Sistema de scroll** inteligente e responsivo
+- ✅ **Conversão de dados** automática dict→JSON
+- ✅ **Tratamento de erros** robusto e preciso
 
 ### Resultado Final
 **Sistema totalmente apto para produção com arquitetura profissional!** 🚀
