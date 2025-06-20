@@ -33,6 +33,8 @@ class ExecutionManager:
         self.status_update_callback: Optional[Callable] = None
         self.process_counter_callback: Optional[Callable] = None
         self.button_state_callback: Optional[Callable] = None
+        self.token_spinner_start_callback: Optional[Callable] = None
+        self.token_spinner_stop_callback: Optional[Callable] = None
     
     def _safe_message(self, message: str, msg_type: str = 'info') -> None:
         """Adiciona mensagem de forma segura"""
@@ -47,11 +49,15 @@ class ExecutionManager:
     def set_ui_callbacks(self, 
                         status_update: Callable = None,
                         process_counter: Callable = None,
-                        button_state: Callable = None):
+                        button_state: Callable = None,
+                        token_spinner_start: Callable = None,
+                        token_spinner_stop: Callable = None):
         """Define callbacks para atualização da UI"""
         self.status_update_callback = status_update
         self.process_counter_callback = process_counter
         self.button_state_callback = button_state
+        self.token_spinner_start_callback = token_spinner_start
+        self.token_spinner_stop_callback = token_spinner_stop
     
     def execute_automation(self, automation_name: str) -> None:
         """Executa uma automação via AutomacaoManager"""
@@ -79,6 +85,10 @@ class ExecutionManager:
     def execute_token_renewal(self) -> None:
         """Executa renovação de token usando versão simplificada"""
         self._safe_message("🔑 Iniciando renovação de token...", 'info')
+        
+        # Iniciar spinner
+        if self.token_spinner_start_callback:
+            self.token_spinner_start_callback()
         
         # Executar em thread separada
         thread = threading.Thread(target=self._execute_token_thread)
@@ -183,6 +193,10 @@ class ExecutionManager:
                     execution_id, 'ERRO', mensagem_erro=mensagem_erro
                 )
         
+        # Parar spinner
+        if self.token_spinner_stop_callback:
+            self.token_spinner_stop_callback()
+        
         # Forçar atualização do scroll após conclusão do token
         if self.message_manager and hasattr(self.message_manager, 'force_scroll_update'):
             self.message_manager.force_scroll_update()
@@ -208,6 +222,10 @@ class ExecutionManager:
                 )
             except:
                 pass
+        
+        # Parar spinner
+        if self.token_spinner_stop_callback:
+            self.token_spinner_stop_callback()
         
         # Forçar atualização do scroll após erro do token
         if self.message_manager and hasattr(self.message_manager, 'force_scroll_update'):

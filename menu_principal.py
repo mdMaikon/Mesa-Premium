@@ -82,7 +82,9 @@ class MenuAutomacoes:
         self.execution_manager.set_ui_callbacks(
             status_update=self.update_automation_status,
             process_counter=self.update_process_counter,
-            button_state=self.update_button_state
+            button_state=self.update_button_state,
+            token_spinner_start=self.start_token_spinner,
+            token_spinner_stop=self.stop_token_spinner
         )
     
     def _setup_keyboard_shortcuts(self):
@@ -174,6 +176,14 @@ class MenuAutomacoes:
             if self.ui_manager.btn_execute_main:
                 state = 'normal' if enabled else 'disabled'
                 self.ui_manager.btn_execute_main.configure(state=state)
+    
+    def start_token_spinner(self):
+        """Inicia spinner do botão de token"""
+        self.ui_manager.start_token_spinner()
+    
+    def stop_token_spinner(self):
+        """Para spinner do botão de token"""
+        self.ui_manager.stop_token_spinner()
     
     def open_specific_folder(self):
         """Abre pasta específica da automação selecionada"""

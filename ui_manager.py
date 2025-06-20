@@ -50,6 +50,11 @@ class UIManager:
         self.btn_logs: Optional[ctk.CTkButton] = None
         self.btn_token: Optional[ctk.CTkButton] = None
         
+        # Controle do spinner do token
+        self.token_spinner_active: bool = False
+        self.token_spinner_frame: int = 0
+        self.token_original_text: str = "🔑 Renovar Token"
+        
         # Gerenciamento de cards
         self.automation_cards: List[AutomationCard] = []
         self.filtered_cards: List[AutomationCard] = []
@@ -536,3 +541,49 @@ class UIManager:
     def ask_yes_no(self, title: str, message: str) -> bool:
         """Mostra caixa de diálogo sim/não"""
         return messagebox.askyesno(title, message)
+    
+    def start_token_spinner(self) -> None:
+        """Inicia animação do spinner no botão de token"""
+        if not self.btn_token:
+            return
+            
+        self.token_spinner_active = True
+        self.token_spinner_frame = 0
+        
+        # Desabilitar botão durante execução
+        self.btn_token.configure(state="disabled")
+        
+        # Iniciar animação
+        self._animate_token_spinner()
+    
+    def stop_token_spinner(self) -> None:
+        """Para animação do spinner no botão de token"""
+        if not self.btn_token:
+            return
+            
+        self.token_spinner_active = False
+        
+        # Restaurar texto original e reabilitar botão
+        self.btn_token.configure(
+            text=self.token_original_text,
+            state="normal"
+        )
+    
+    def _animate_token_spinner(self) -> None:
+        """Anima o spinner do token"""
+        if not self.token_spinner_active or not self.btn_token:
+            return
+        
+        # Frames da animação usando caracteres Unicode
+        spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        
+        # Atualizar texto do botão
+        current_frame = spinner_frames[self.token_spinner_frame % len(spinner_frames)]
+        self.btn_token.configure(text=f"{current_frame} Renovando Token...")
+        
+        # Próximo frame
+        self.token_spinner_frame += 1
+        
+        # Continuar animação se ainda ativa
+        if self.token_spinner_active:
+            self.root.after(150, self._animate_token_spinner)
