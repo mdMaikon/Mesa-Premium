@@ -1,0 +1,23 @@
+# FastAPI Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Database
+mysql-connector-python==9.3.0
+python-dotenv==1.1.0
+
+# Web Automation
+selenium==4.33.0
+
+# Background Tasks (Future)
+celery==5.4.0
+redis==5.2.1
+
+# Utilities
+pillow==11.2.1
+pandas==2.3.0
+
+# Development
+pytest==7.4.3
+httpx==0.25.2
