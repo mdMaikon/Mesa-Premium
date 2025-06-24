@@ -33,14 +33,19 @@ async def list_automations():
                 "/api/token/history/{user_login}"
             ]
         ),
-        # Future automations will be added here
-        # AutomationInfo(
-        #     name="Fiscal Data Automation",
-        #     description="Automate fiscal data processing",
-        #     status="planned",
-        #     version="0.1.0",
-        #     endpoints=["/api/fiscal/process"]
-        # )
+        AutomationInfo(
+            name="Fixed Income Data Processing",
+            description="Download and process fixed income data from Hub XP",
+            status="active",
+            version="1.0.0",
+            endpoints=[
+                "/api/fixed-income/process",
+                "/api/fixed-income/process-sync",
+                "/api/fixed-income/status",
+                "/api/fixed-income/stats",
+                "/api/fixed-income/categories"
+            ]
+        )
     ]
     
     return automations
@@ -52,8 +57,8 @@ async def get_automation_stats() -> Dict[str, Any]:
     """
     # This would be expanded with real statistics
     return {
-        "total_automations": 1,
-        "active_automations": 1,
+        "total_automations": 2,
+        "active_automations": 2,
         "total_executions_today": 0,  # Would come from database
         "success_rate": 0.0,  # Would be calculated from logs
         "last_execution": None,  # Would come from database

@@ -85,8 +85,6 @@ MenuAutomacoes/
 
 **Configuração atual:**
 - **Host**: srv719.hstgr.io (Hostinger MySQL)
-- **Database**: u272626296_automacoes
-- **User**: u272626296_mesapremium
 
 **Tabelas existentes:**
 - `hub_tokens` - Tokens extraídos (já existente)

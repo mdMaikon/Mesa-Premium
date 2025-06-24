@@ -4,7 +4,7 @@ FastAPI Application - Hub XP Token Extraction and Multi-Automation Platform
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from routes import tokens, health, automations
+from routes import tokens, health, automations, fixed_income
 from utils.logging_config import setup_logging
 import os
 
@@ -33,6 +33,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(tokens.router, prefix="/api", tags=["tokens"])
 app.include_router(automations.router, prefix="/api", tags=["automations"])
+app.include_router(fixed_income.router, prefix="/api", tags=["fixed-income"])
 
 @app.get("/")
 async def root():
