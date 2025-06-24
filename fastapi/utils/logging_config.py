@@ -9,8 +9,9 @@ def setup_logging(log_level: str = "INFO"):
     """
     Setup application logging
     """
-    # Create logs directory
-    log_dir = Path("logs")
+    # Create logs directory in project root
+    project_root = Path(__file__).parent.parent.parent
+    log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     
     # Configure logging format

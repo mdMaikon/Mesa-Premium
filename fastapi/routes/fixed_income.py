@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime
 from services.fixed_income_service import FixedIncomeService
+from utils.state_manager import get_state_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,37 +33,28 @@ class StatsResponse(BaseModel):
     latest_maturity: str = None
     error: str = None
 
-# Background task storage for processing status
-processing_status = {
-    "is_processing": False,
-    "last_result": None,
-    "start_time": None
-}
+# Thread-safe state manager instance
+state_manager = get_state_manager()
 
-async def process_fixed_income_background():
+async def process_fixed_income_background(process_id: str):
     """Background task to process fixed income data"""
-    global processing_status
-    
     try:
-        processing_status["is_processing"] = True
-        processing_status["start_time"] = str(datetime.now())
-        
         service = FixedIncomeService()
         result = await service.process_and_store_data()
         
-        processing_status["last_result"] = result
-        processing_status["is_processing"] = False
+        # Finish processing with result
+        state_manager.finish_processing(result)
         
         logger.info(f"Background processing completed: {result}")
         
     except Exception as e:
         logger.error(f"Background processing failed: {e}")
-        processing_status["last_result"] = {
+        error_result = {
             "success": False,
             "message": "Background processing failed",
             "error": str(e)
         }
-        processing_status["is_processing"] = False
+        state_manager.finish_processing(error_result)
 
 @router.post("/fixed-income/process", response_model=ProcessingResponse)
 async def process_fixed_income_data(background_tasks: BackgroundTasks):
@@ -78,8 +70,10 @@ async def process_fixed_income_data(background_tasks: BackgroundTasks):
     Returns processing results with statistics
     """
     try:
-        # Check if already processing
-        if processing_status["is_processing"]:
+        # Try to start processing
+        process_id = f"fixed_income_{int(datetime.now().timestamp())}"
+        
+        if not state_manager.start_processing(process_id):
             return ProcessingResponse(
                 success=False,
                 message="Processing already in progress",
@@ -87,7 +81,7 @@ async def process_fixed_income_data(background_tasks: BackgroundTasks):
             )
         
         # Start background processing
-        background_tasks.add_task(process_fixed_income_background)
+        background_tasks.add_task(process_fixed_income_background, process_id)
         
         return ProcessingResponse(
             success=True,
@@ -137,11 +131,7 @@ async def get_processing_status():
     Returns information about ongoing or completed processing operations
     """
     try:
-        return {
-            "is_processing": processing_status["is_processing"],
-            "start_time": processing_status["start_time"],
-            "last_result": processing_status["last_result"]
-        }
+        return state_manager.get_status()
         
     except Exception as e:
         logger.error(f"Error getting processing status: {e}")

@@ -17,23 +17,24 @@ logger = logging.getLogger(__name__)
 
 @router.post("/token/extract", response_model=TokenExtractionResult)
 async def extract_hub_token(
-    request: TokenExtractionRequest,
+    token_request: TokenExtractionRequest,
     background_tasks: BackgroundTasks = None
 ):
     """
     Extract Hub XP token for user
     """
     try:
-        logger.info(f"Token extraction request for user: {request.credentials.user_login}")
+        masked_user = token_request.credentials.user_login[:2] + '***' + token_request.credentials.user_login[-2:] if len(token_request.credentials.user_login) > 4 else '***'
+        logger.info(f"Token extraction request for user: {masked_user}")
         
         # Initialize service
         service = HubTokenService()
         
         # Extract token
         result = await service.extract_token(
-            user_login=request.credentials.user_login,
-            password=request.credentials.password,
-            mfa_code=request.credentials.mfa_code
+            user_login=token_request.credentials.user_login,
+            password=token_request.credentials.password,
+            mfa_code=token_request.credentials.mfa_code
         )
         
         if not result.success:

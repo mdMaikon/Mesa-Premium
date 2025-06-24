@@ -21,12 +21,11 @@ async def health_check():
     
     # Test database connection
     try:
-        conn = get_database_connection()
-        if conn and conn.is_connected():
-            db_status = "connected"
-            conn.close()
-        else:
-            db_status = "disconnected"
+        with get_database_connection() as conn:
+            if conn and conn.is_connected():
+                db_status = "connected"
+            else:
+                db_status = "disconnected"
     except Exception as e:
         db_status = f"error: {str(e)}"
     

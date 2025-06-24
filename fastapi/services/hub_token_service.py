@@ -5,6 +5,7 @@ Migrated from renovar_token_simplified.py
 import os
 import json
 import logging
+from utils.log_sanitizer import get_sanitized_logger, mask_sensitive_data
 import platform
 from datetime import datetime, timedelta
 from selenium import webdriver
@@ -18,7 +19,7 @@ from typing import Dict, Any, Optional, Tuple
 from database.connection import execute_query
 from models.hub_token import TokenExtractionResult
 
-logger = logging.getLogger(__name__)
+logger = get_sanitized_logger(__name__)
 
 
 class HubTokenService:
@@ -103,15 +104,13 @@ class HubTokenService:
             "--disable-blink-features=AutomationControlled")
 
         # Additional stealth options
-        chrome_options.add_argument("--disable-web-security")
         chrome_options.add_argument("--allow-running-insecure-content")
-        chrome_options.add_argument("--ignore-certificate-errors")
         chrome_options.add_argument("--ignore-ssl-errors")
         chrome_options.add_argument("--ignore-certificate-errors-spki-list")
 
         # WSL specific options
         if self.environment in ["linux", "wsl"]:
-            # chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--headless")
             chrome_options.add_argument("--disable-software-rasterizer")
             chrome_options.add_argument("--memory-pressure-off")
             chrome_options.add_argument("--max_old_space_size=4096")
@@ -183,7 +182,9 @@ class HubTokenService:
     def _perform_login(self, user_login: str, password: str, mfa_code: Optional[str] = None) -> bool:
         """Perform Hub XP login with enhanced error handling"""
         try:
-            logger.info(f"Starting login for user: {user_login}")
+            masked_user = user_login[:2] + '***' + \
+                user_login[-2:] if len(user_login) > 4 else '***'
+            logger.info(f"Starting login for user: {masked_user}")
 
             # Navigate to Hub XP
             logger.info("Navigating to Hub XP...")
@@ -297,9 +298,10 @@ class HubTokenService:
             # MFA - SEMPRE aguarda aparecer os campos (exactly like renovar_token_simplified.py)
             # Hub XP sempre requer MFA após login inicial
             logger.info("Looking for MFA fields after login...")
-            logger.info(f"DEBUG: MFA code provided: {mfa_code}")
+            logger.info("DEBUG: MFA code provided: [MASKED]")
             logger.info(f"DEBUG: MFA code type: {type(mfa_code)}")
-            logger.info(f"DEBUG: MFA code length: {len(mfa_code) if mfa_code else 'None'}")
+            logger.info(
+                f"DEBUG: MFA code length: {len(mfa_code) if mfa_code else 'None'}")
 
             try:
                 mfa_fields = WebDriverWait(self.driver, 30).until(
@@ -314,22 +316,27 @@ class HubTokenService:
 
                 # Garantir que mfa_code é string
                 mfa_code = str(mfa_code).strip()
-                logger.info(f"DEBUG: MFA code after conversion: '{mfa_code}' (length: {len(mfa_code)})")
+                logger.info(
+                    f"DEBUG: MFA code after conversion: '[MASKED]' (length: {len(mfa_code)})")
 
                 if len(mfa_code) != 6:
-                    raise Exception(f"MFA code must be 6 digits, got {len(mfa_code)}")
+                    raise Exception(
+                        f"MFA code must be 6 digits, got {len(mfa_code)}")
 
-                logger.info(f"Entering MFA code in {len(mfa_fields)} fields...")
+                logger.info(
+                    f"Entering MFA code in {len(mfa_fields)} fields...")
                 # Preenche cada campo com um dígito do MFA
                 for i, campo in enumerate(mfa_fields):
                     if i < len(mfa_code):
                         digit = mfa_code[i]
-                        logger.info(f"DEBUG: Filling field {i} with digit '{digit}'")
+                        logger.info(
+                            f"DEBUG: Filling field {i} with digit '[MASKED]'")
                         campo.clear()
                         campo.send_keys(digit)
                         # Verificar se foi preenchido
                         filled_value = campo.get_attribute('value')
-                        logger.info(f"DEBUG: Field {i} value after filling: '{filled_value}'")
+                        logger.info(
+                            f"DEBUG: Field {i} value after filling: '[MASKED]'")
 
                 # Find MFA submit button (exactly like renovar_token_simplified.py)
                 try:
@@ -420,26 +427,14 @@ class HubTokenService:
             )
 
             # Execute insert and get the connection to retrieve last insert ID
-            connection = None
-            cursor = None
-            token_id = None
-            
-            try:
-                from database.connection import get_database_connection
-                connection = get_database_connection()
-                if not connection:
-                    raise Exception("Failed to connect to database")
-                    
+            from database.connection import get_database_connection
+
+            with get_database_connection() as connection:
                 cursor = connection.cursor()
                 cursor.execute(insert_query, params)
                 token_id = cursor.lastrowid  # Get the auto-increment ID
                 connection.commit()
-                
-            finally:
-                if cursor:
-                    cursor.close()
-                if connection and connection.is_connected():
-                    connection.close()
+                cursor.close()
 
             logger.info(f"Token saved to database with ID: {token_id}")
             return token_id
@@ -453,7 +448,9 @@ class HubTokenService:
         Main method to extract Hub XP token
         """
         try:
-            logger.info(f"Starting token extraction for user: {user_login}")
+            masked_user = user_login[:2] + '***' + \
+                user_login[-2:] if len(user_login) > 4 else '***'
+            logger.info(f"Starting token extraction for user: {masked_user}")
 
             # Setup WebDriver
             self.driver = self._setup_webdriver()
@@ -488,8 +485,10 @@ class HubTokenService:
                     error_details="Unable to save token to database"
                 )
 
+            masked_user = user_login[:2] + '***' + \
+                user_login[-2:] if len(user_login) > 4 else '***'
             logger.info(
-                f"Token extraction completed successfully for user: {user_login}")
+                f"Token extraction completed successfully for user: {masked_user}")
             return TokenExtractionResult(
                 success=True,
                 message="Token extracted successfully",

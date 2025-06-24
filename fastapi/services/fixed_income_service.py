@@ -4,6 +4,8 @@ Migrated and refactored from juro_mensal_mysql.py
 """
 import os
 import requests
+import httpx
+import asyncio
 import json
 import pandas as pd
 import re
@@ -11,6 +13,10 @@ from datetime import datetime
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+from dotenv import load_dotenv
+
+# Load environment variables from project root
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 import mysql.connector
 from io import BytesIO
 from database.connection import get_database_connection, execute_query
@@ -57,9 +63,13 @@ class FixedIncomeService:
 
     def get_headers(self) -> Dict[str, str]:
         """Return headers for API requests"""
+        api_key = os.getenv("HUB_XP_API_KEY")
+        if not api_key:
+            raise ValueError("HUB_XP_API_KEY environment variable not found")
+        
         return {
             "Authorization": f"Bearer {self.token}",
-            "ocp-apim-subscription-key": "3923e12297e7448398ba9a9046c4fced",
+            "ocp-apim-subscription-key": api_key,
             "Content-Type": "application/json",
             "Origin": "https://hub.xpi.com.br",
             "Referer": "https://hub.xpi.com.br/",
@@ -113,14 +123,15 @@ class FixedIncomeService:
             return df
 
     def filter_igpm_assets(self, df) -> pd.DataFrame:
-        """Remove assets with IGP-M indexer"""
+        """Remove assets with IGP-M indexer (optimized for pipeline)"""
         try:
             if 'Indexador' not in df.columns:
                 logger.warning("'Indexador' column not found")
                 return df
             
             lines_before = len(df)
-            df_filtered = df[df['Indexador'] != 'IGP-M'].copy()
+            # Use query method for better performance with large datasets
+            df_filtered = df.query("Indexador != 'IGP-M'").copy()
             lines_removed = lines_before - len(df_filtered)
             
             logger.info(f"IGP-M filter applied: {lines_removed} assets removed")
@@ -382,37 +393,39 @@ class FixedIncomeService:
             return df
 
     async def download_and_process_category(self, categoria: str, nome_arquivo: str) -> Optional[pd.DataFrame]:
-        """Download and process a specific category"""
+        """Download and process a specific category asynchronously"""
         try:
             url = f"https://api-advisor.xpi.com.br/rf-fixedincome-hub-apim/v2/available-assets/export?category={categoria}&brand=XP"
             headers = self.get_headers()
             
             logger.info(f"Downloading category: {categoria}")
             
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                
+                # Process Excel directly from memory
+                excel_content = response.content
+                file_size = len(excel_content)
+                logger.info(f"Category {categoria} downloaded: {file_size:,} bytes")
+                
+                # Read Excel from memory using asyncio thread pool
+                excel_buffer = BytesIO(excel_content)
+                loop = asyncio.get_event_loop()
+                df = await loop.run_in_executor(None, pd.read_excel, excel_buffer)
+                
+                # Add Duration column with value 0 if it doesn't exist
+                if 'Duration' not in df.columns:
+                    df['Duration'] = 0
+                    logger.info(f"Duration column added to category {categoria}")
+                
+                logger.info(f"Category {categoria} processed: {len(df)} rows")
+                return df
             
-            # Process Excel directly from memory
-            excel_content = response.content
-            file_size = len(excel_content)
-            logger.info(f"Category {categoria} downloaded: {file_size:,} bytes")
-            
-            # Read Excel from memory
-            excel_buffer = BytesIO(excel_content)
-            df = pd.read_excel(excel_buffer)
-            
-            # Add Duration column with value 0 if it doesn't exist
-            if 'Duration' not in df.columns:
-                df['Duration'] = 0
-                logger.info(f"Duration column added to category {categoria}")
-            
-            logger.info(f"Category {categoria} processed: {len(df)} rows")
-            return df
-            
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             logger.error(f"Timeout in request for category {categoria}")
             return None
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             logger.error(f"Request error for category {categoria}: {e}")
             return None
         except Exception as e:
@@ -422,55 +435,52 @@ class FixedIncomeService:
     async def create_fixed_income_table(self) -> bool:
         """Create fixed income table if it doesn't exist"""
         try:
-            connection = get_database_connection()
-            if not connection:
-                return False
-            
-            cursor = connection.cursor()
-            
-            # Drop table if exists to ensure new structure
-            drop_table_query = "DROP TABLE IF EXISTS fixed_income_data"
-            cursor.execute(drop_table_query)
-            logger.info("Previous table removed (if existed)")
-            
-            create_table_query = """
-            CREATE TABLE fixed_income_data (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                data_coleta DATETIME NOT NULL,
-                ativo VARCHAR(255),
-                instrumento VARCHAR(100),
-                duration DECIMAL(10,6),
-                indexador VARCHAR(100),
-                juros VARCHAR(50),
-                primeira_data_juros DATE,
-                isento VARCHAR(10),
-                rating VARCHAR(50),
-                vencimento DATE,
-                tax_min VARCHAR(255),
-                tax_min_clean DECIMAL(8,4),
-                roa_aprox DECIMAL(8,4),
-                taxa_emissao DECIMAL(8,4),
-                publico VARCHAR(100),
-                publico_resumido VARCHAR(10),
-                emissor VARCHAR(255),
-                cupom VARCHAR(100),
-                classificar_vencimento TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            with get_database_connection() as connection:
+                cursor = connection.cursor()
                 
-                INDEX idx_data_coleta (data_coleta),
-                INDEX idx_ativo (ativo),
-                INDEX idx_emissor (emissor),
-                INDEX idx_vencimento (vencimento),
-                INDEX idx_rating (rating),
-                INDEX idx_indexador (indexador)
-            )
-            """
-            
-            cursor.execute(create_table_query)
-            logger.info("fixed_income_data table created with TEXT field for classificar_vencimento!")
-            cursor.close()
-            connection.close()
+                # Drop table if exists to ensure new structure
+                drop_table_query = "DROP TABLE IF EXISTS fixed_income_data"
+                cursor.execute(drop_table_query)
+                logger.info("Previous table removed (if existed)")
+                
+                create_table_query = """
+                CREATE TABLE fixed_income_data (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    data_coleta DATETIME NOT NULL,
+                    ativo VARCHAR(255),
+                    instrumento VARCHAR(100),
+                    duration DECIMAL(10,6),
+                    indexador VARCHAR(100),
+                    juros VARCHAR(50),
+                    primeira_data_juros DATE,
+                    isento VARCHAR(10),
+                    rating VARCHAR(50),
+                    vencimento DATE,
+                    tax_min VARCHAR(255),
+                    tax_min_clean DECIMAL(8,4),
+                    roa_aprox DECIMAL(8,4),
+                    taxa_emissao DECIMAL(8,4),
+                    publico VARCHAR(100),
+                    publico_resumido VARCHAR(10),
+                    emissor VARCHAR(255),
+                    cupom VARCHAR(100),
+                    classificar_vencimento TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    
+                    INDEX idx_data_coleta (data_coleta),
+                    INDEX idx_ativo (ativo),
+                    INDEX idx_emissor (emissor),
+                    INDEX idx_vencimento (vencimento),
+                    INDEX idx_rating (rating),
+                    INDEX idx_indexador (indexador)
+                )
+                """
+                
+                cursor.execute(create_table_query)
+                logger.info("fixed_income_data table created with TEXT field for classificar_vencimento!")
+                cursor.close()
+                
             return True
             
         except mysql.connector.Error as err:
@@ -492,81 +502,78 @@ class FixedIncomeService:
     async def insert_fixed_income_data(self, df: pd.DataFrame) -> bool:
         """Insert fixed income data into database"""
         try:
-            connection = get_database_connection()
-            if not connection:
-                return False
-            
-            cursor = connection.cursor()
-            
-            # Add collection timestamp
-            df['data_coleta'] = datetime.now()
-            
-            # Convert DataFrame to list of dicts
-            records = df.to_dict('records')
-            logger.info(f"Converted {len(records)} records for insertion")
-            
-            # Convert records to list of tuples
-            data_tuples = []
-            for record in records:
-                def get_safe_value(key, default='', is_numeric=False):
-                    value = record.get(key, default)
-                    
-                    if pd.isna(value):
-                        return 0.0 if is_numeric else ''
-                    
-                    if is_numeric:
-                        try:
-                            return float(value) if value != '' else 0.0
-                        except (ValueError, TypeError):
-                            return 0.0
-                    
-                    if isinstance(value, str):
-                        return value.strip()
-                    elif value is None:
-                        return ''
-                    else:
-                        return str(value).strip()
+            with get_database_connection() as connection:
+                cursor = connection.cursor()
                 
-                tuple_data = (
-                    record.get('data_coleta'),
-                    get_safe_value('Ativo'),
-                    get_safe_value('Instrumento'),
-                    get_safe_value('Duration', 0.0, is_numeric=True),
-                    get_safe_value('Indexador'),
-                    get_safe_value('Juros'),
-                    record.get('Primeira Data de Juros'),
-                    get_safe_value('Isento'),
-                    get_safe_value('Rating'),
-                    record.get('Vencimento'),
-                    get_safe_value('Tax.Mín'),
-                    get_safe_value('Tax.Mín_Clean', 0.0, is_numeric=True),
-                    get_safe_value('ROA E. Aprox.', 0.0, is_numeric=True),
-                    get_safe_value('Taxa de Emissão', 0.0, is_numeric=True),
-                    get_safe_value('Público'),
-                    get_safe_value('Público Resumido'),
-                    get_safe_value('Emissor'),
-                    get_safe_value('Cupom'),
-                    get_safe_value('Classificar Vencimento')
-                )
+                # Add collection timestamp
+                df['data_coleta'] = datetime.now()
                 
-                data_tuples.append(tuple_data)
-            
-            insert_query = """
-            INSERT INTO fixed_income_data 
-            (data_coleta, ativo, instrumento, duration, indexador, juros, 
-            primeira_data_juros, isento, rating, vencimento, tax_min, tax_min_clean,
-            roa_aprox, taxa_emissao, publico, publico_resumido, 
-            emissor, cupom, classificar_vencimento)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            # Batch insertion for better performance
-            cursor.executemany(insert_query, data_tuples)
-            connection.commit()
-            
-            logger.info(f"Inserted {len(data_tuples)} records into MySQL!")
-            cursor.close()
-            connection.close()
+                # Convert DataFrame to list of dicts
+                records = df.to_dict('records')
+                logger.info(f"Converted {len(records)} records for insertion")
+                
+                # Convert records to list of tuples
+                data_tuples = []
+                for record in records:
+                    def get_safe_value(key, default='', is_numeric=False):
+                        value = record.get(key, default)
+                        
+                        if pd.isna(value):
+                            return 0.0 if is_numeric else ''
+                        
+                        if is_numeric:
+                            try:
+                                return float(value) if value != '' else 0.0
+                            except (ValueError, TypeError):
+                                return 0.0
+                        
+                        if isinstance(value, str):
+                            return value.strip()
+                        elif value is None:
+                            return ''
+                        else:
+                            return str(value).strip()
+                    
+                    tuple_data = (
+                        record.get('data_coleta'),
+                        get_safe_value('Ativo'),
+                        get_safe_value('Instrumento'),
+                        get_safe_value('Duration', 0.0, is_numeric=True),
+                        get_safe_value('Indexador'),
+                        get_safe_value('Juros'),
+                        record.get('Primeira Data de Juros'),
+                        get_safe_value('Isento'),
+                        get_safe_value('Rating'),
+                        record.get('Vencimento'),
+                        get_safe_value('Tax.Mín'),
+                        get_safe_value('Tax.Mín_Clean', 0.0, is_numeric=True),
+                        get_safe_value('ROA E. Aprox.', 0.0, is_numeric=True),
+                        get_safe_value('Taxa de Emissão', 0.0, is_numeric=True),
+                        get_safe_value('Público'),
+                        get_safe_value('Público Resumido'),
+                        get_safe_value('Emissor'),
+                        get_safe_value('Cupom'),
+                        get_safe_value('Classificar Vencimento')
+                    )
+                    
+                    data_tuples.append(tuple_data)
+                
+                insert_query = """
+                INSERT INTO fixed_income_data 
+                (data_coleta, ativo, instrumento, duration, indexador, juros, 
+                primeira_data_juros, isento, rating, vencimento, tax_min, tax_min_clean,
+                roa_aprox, taxa_emissao, publico, publico_resumido, 
+                emissor, cupom, classificar_vencimento)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                
+                # Batch insertion for better performance
+                cursor.executemany(insert_query, data_tuples)
+                connection.commit()
+                
+                logger.info(f"Inserted {len(data_tuples)} records into MySQL!")
+                cursor.close()
+                
             return True
             
         except mysql.connector.Error as err:
@@ -595,14 +602,29 @@ class FixedIncomeService:
                     "error": "Database table creation failed"
                 }
             
-            dataframes = []
-            logger.info("Starting download and processing of categories...")
+            logger.info("Starting parallel download and processing of categories...")
             
-            # Download and process each category
-            for categoria, nome_arquivo in self.categorias.items():
-                df = await self.download_and_process_category(categoria, nome_arquivo)
-                if df is not None:
-                    dataframes.append(df)
+            # Download and process all categories in parallel using asyncio.gather()
+            download_tasks = [
+                self.download_and_process_category(categoria, nome_arquivo)
+                for categoria, nome_arquivo in self.categorias.items()
+            ]
+            
+            results = await asyncio.gather(*download_tasks, return_exceptions=True)
+            
+            # Process results and check for failures
+            dataframes = []
+            for i, (categoria, nome_arquivo) in enumerate(self.categorias.items()):
+                result = results[i]
+                if isinstance(result, Exception):
+                    logger.error(f"Exception in category {categoria}: {result}")
+                    return {
+                        "success": False,
+                        "message": f"Failed to download category: {categoria}",
+                        "error": f"Category {categoria} download failed: {str(result)}"
+                    }
+                elif result is not None:
+                    dataframes.append(result)
                 else:
                     return {
                         "success": False,
@@ -614,24 +636,8 @@ class FixedIncomeService:
             df_consolidated = pd.concat(dataframes, ignore_index=True)
             logger.info(f"Data consolidated: {len(df_consolidated)} total rows")
             
-            # Apply filters and rules
-            df_sem_igpm = self.filter_igpm_assets(df_consolidated)
-            
-            # Filter by interest rates (only Monthly and Semiannual)
-            if 'Juros' in df_sem_igpm.columns:
-                df_filtered = df_sem_igpm[df_sem_igpm['Juros'].isin(['Mensal', 'Semestral'])]
-                removed_lines = len(df_sem_igpm) - len(df_filtered)
-                logger.info(f"Interest filter applied: {removed_lines} rows removed, {len(df_filtered)} kept")
-            else:
-                logger.warning("'Juros' column not found, keeping all records")
-                df_filtered = df_sem_igpm
-            
-            # Process data with rules (correct order)
-            df_com_ntn_rules = self.apply_ntn_rules(df_filtered)
-            df_formatado = self.format_tax_columns(df_com_ntn_rules)
-            df_com_novas_colunas = self.create_new_columns(df_formatado)
-            df_pre_final = self.select_columns(df_com_novas_colunas)
-            df_final = self.clean_dataframe_for_mysql(df_pre_final)
+            # Process data using optimized pipeline (single pass, reduced memory usage)
+            df_final = self.process_dataframe_pipeline(df_consolidated)
             
             # Clear old data before inserting new ones
             if not await self.clear_all_data():
@@ -665,6 +671,32 @@ class FixedIncomeService:
                 "message": "Processing failed with error",
                 "error": str(e)
             }
+
+    def process_dataframe_pipeline(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Optimized DataFrame processing pipeline using method chaining
+        Combines multiple transformations to reduce memory usage and improve performance
+        """
+        try:
+            logger.info("Starting optimized DataFrame processing pipeline...")
+            
+            # Apply all transformations in a single pipeline using method chaining
+            df_processed = (df
+                .pipe(self.filter_igpm_assets)
+                .pipe(lambda x: x[x['Juros'].isin(['Mensal', 'Semestral'])] if 'Juros' in x.columns else x)  # Interest filter
+                .pipe(self.apply_ntn_rules)
+                .pipe(self.format_tax_columns)
+                .pipe(self.create_new_columns)
+                .pipe(self.select_columns)
+                .pipe(self.clean_dataframe_for_mysql)
+            )
+            
+            logger.info(f"Pipeline processing completed: {len(df_processed)} records processed")
+            return df_processed
+            
+        except Exception as e:
+            logger.error(f"Error in DataFrame processing pipeline: {e}")
+            return df
 
     async def get_processing_stats(self) -> Dict[str, Any]:
         """Get processing statistics"""

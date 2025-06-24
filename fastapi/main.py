@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from routes import tokens, health, automations, fixed_income
 from utils.logging_config import setup_logging
+from middleware.rate_limiting import rate_limit_middleware
 import os
 
 # Setup logging
@@ -20,20 +21,38 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configure CORS for PHP integration
+# Configure CORS for security
+# Allow origins based on environment
+allowed_origins = [
+    "http://localhost:3000",    # Frontend development
+    "http://localhost:8080",    # Alternative frontend port
+    "http://127.0.0.1:3000",    # Local development
+    "http://127.0.0.1:8080",    # Alternative local port
+]
+
+# Add production origins if environment variable is set
+production_origins = os.getenv("ALLOWED_ORIGINS")
+if production_origins:
+    allowed_origins.extend(production_origins.split(","))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure specific domains in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization",
+                   "Accept", "Origin", "X-Requested-With"],
 )
+
+# Add rate limiting middleware
+app.middleware("http")(rate_limit_middleware)
 
 # Include routers
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(tokens.router, prefix="/api", tags=["tokens"])
 app.include_router(automations.router, prefix="/api", tags=["automations"])
 app.include_router(fixed_income.router, prefix="/api", tags=["fixed-income"])
+
 
 @app.get("/")
 async def root():
@@ -45,11 +64,46 @@ async def root():
         "health": "/api/health"
     }
 
+def get_uvicorn_config():
+    """Get uvicorn configuration based on environment"""
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    
+    # Base configuration
+    config = {
+        "app": "main:app",
+        "host": os.getenv("HOST", "0.0.0.0"),
+        "port": int(os.getenv("PORT", "8000")),
+    }
+    
+    if environment == "production":
+        # Production configuration
+        config.update({
+            "reload": False,
+            "workers": int(os.getenv("WORKERS", "4")),
+            "log_level": os.getenv("LOG_LEVEL", "warning"),
+            "access_log": False,  # Reduce logging overhead
+            "server_header": False,  # Hide server information
+            "date_header": False,  # Reduce response headers
+        })
+    elif environment == "staging":
+        # Staging configuration
+        config.update({
+            "reload": False,
+            "workers": int(os.getenv("WORKERS", "2")),
+            "log_level": os.getenv("LOG_LEVEL", "info"),
+            "access_log": True,
+        })
+    else:
+        # Development configuration
+        config.update({
+            "reload": True,
+            "log_level": os.getenv("LOG_LEVEL", "debug"),
+            "access_log": True,
+        })
+    
+    return config
+
+
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    config = get_uvicorn_config()
+    uvicorn.run(**config)
