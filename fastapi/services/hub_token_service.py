@@ -204,14 +204,10 @@ class HubTokenService:
 
             logger.info("Waiting for login form...")
 
-            # Try multiple selectors for username field
+            # Try multiple selectors for username field - Hub XP uses name="account"
             username_selectors = [
-                (By.ID, "username"),
-                (By.NAME, "username"),
-                (By.NAME, "email"),
-                (By.CSS_SELECTOR, "input[type='email']"),
-                (By.CSS_SELECTOR, "input[placeholder*='email']"),
-                (By.CSS_SELECTOR, "input[placeholder*='usuário']"),
+                (By.NAME, "account"),  # Hub XP specific
+                (By.CSS_SELECTOR, "input[placeholder*='account']"),
                 (By.XPATH, "//input[@type='text' or @type='email']")
             ]
 
@@ -238,10 +234,10 @@ class HubTokenService:
             username_field.clear()
             username_field.send_keys(user_login)
 
-            # Try multiple selectors for password field
+            # Try multiple selectors for password field - Hub XP uses name="password"
             password_selectors = [
+                (By.NAME, "password"),  # Hub XP specific
                 (By.ID, "password"),
-                (By.NAME, "password"),
                 (By.CSS_SELECTOR, "input[type='password']"),
                 (By.XPATH, "//input[@type='password']")
             ]
@@ -264,8 +260,10 @@ class HubTokenService:
             password_field.clear()
             password_field.send_keys(password)
 
-            # Try multiple selectors for login button
+            # Try multiple selectors for login button - Hub XP uses aria-label='Continuar'
             login_selectors = [
+                # Hub XP specific
+                (By.CSS_SELECTOR, "button[aria-label='Continuar']"),
                 (By.XPATH, "//button[@type='submit']"),
                 (By.CSS_SELECTOR, "button[type='submit']"),
                 (By.XPATH, "//button[contains(text(), 'Entrar')]"),
@@ -292,102 +290,68 @@ class HubTokenService:
             logger.info("Clicking login button...")
             login_button.click()
 
-            # Wait and check for results
+            # Wait for page to load after clicking login
             import time
             time.sleep(5)
 
-            # Check current URL for success indicators
-            current_url = self.driver.current_url
-            logger.info(f"Current URL after login attempt: {current_url}")
+            # MFA - SEMPRE aguarda aparecer os campos (exactly like renovar_token_simplified.py)
+            # Hub XP sempre requer MFA após login inicial
+            logger.info("Looking for MFA fields after login...")
+            logger.info(f"DEBUG: MFA code provided: {mfa_code}")
+            logger.info(f"DEBUG: MFA code type: {type(mfa_code)}")
+            logger.info(f"DEBUG: MFA code length: {len(mfa_code) if mfa_code else 'None'}")
 
-            # Success patterns
-            success_patterns = [
-                "dashboard", "home", "main", "portal", "app"
-            ]
+            try:
+                mfa_fields = WebDriverWait(self.driver, 30).until(
+                    EC.presence_of_all_elements_located(
+                        (By.CSS_SELECTOR, "input[class='G7DrImLjomaOopqdA6D6dA==']"))
+                )
 
-            if any(pattern in current_url.lower() for pattern in success_patterns):
-                logger.info("Login successful - URL indicates success")
-                return True
+                logger.info(f"DEBUG: Found {len(mfa_fields)} MFA fields")
 
-            # Check for error messages
-            error_selectors = [
-                (By.CSS_SELECTOR, ".error"),
-                (By.CSS_SELECTOR, ".alert-danger"),
-                (By.XPATH, "//*[contains(text(), 'erro')]"),
-                (By.XPATH, "//*[contains(text(), 'inválid')]")
-            ]
+                if not mfa_code:
+                    raise Exception("MFA code required but not provided")
 
-            for selector in error_selectors:
+                # Garantir que mfa_code é string
+                mfa_code = str(mfa_code).strip()
+                logger.info(f"DEBUG: MFA code after conversion: '{mfa_code}' (length: {len(mfa_code)})")
+
+                if len(mfa_code) != 6:
+                    raise Exception(f"MFA code must be 6 digits, got {len(mfa_code)}")
+
+                logger.info(f"Entering MFA code in {len(mfa_fields)} fields...")
+                # Preenche cada campo com um dígito do MFA
+                for i, campo in enumerate(mfa_fields):
+                    if i < len(mfa_code):
+                        digit = mfa_code[i]
+                        logger.info(f"DEBUG: Filling field {i} with digit '{digit}'")
+                        campo.clear()
+                        campo.send_keys(digit)
+                        # Verificar se foi preenchido
+                        filled_value = campo.get_attribute('value')
+                        logger.info(f"DEBUG: Field {i} value after filling: '{filled_value}'")
+
+                # Find MFA submit button (exactly like renovar_token_simplified.py)
                 try:
-                    error_element = self.driver.find_element(*selector)
-                    if error_element.is_displayed():
-                        logger.error(
-                            f"Login error found: {error_element.text}")
-                        return False
+                    mfa_submit = self.driver.find_element(
+                        By.CSS_SELECTOR, "button[aria-label='Confirmar e acessar conta']")
                 except:
-                    continue
+                    mfa_submit = self.driver.find_element(
+                        By.CSS_SELECTOR, "soma-button[type='submit']")
 
-            # If we're still on login page, it might be waiting for MFA or failed
-            if "login" in current_url.lower():
-                logger.warning(
-                    "Still on login page - might need MFA or login failed")
+                mfa_submit.click()
 
-                # Check for MFA requirement
-                mfa_selectors = [
-                    (By.ID, "mfa-token"),
-                    (By.NAME, "mfa"),
-                    (By.CSS_SELECTOR, "input[placeholder*='código']"),
-                    (By.XPATH, "//input[contains(@placeholder, 'código')]")
-                ]
+                # Aguarda autenticação (exactly like renovar_token_simplified.py)
+                WebDriverWait(self.driver, 30).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "header"))
+                )
 
-                mfa_field = None
-                for selector in mfa_selectors:
-                    try:
-                        mfa_field = self.driver.find_element(*selector)
-                        if mfa_field.is_displayed():
-                            logger.info(
-                                f"MFA field found with selector: {selector}")
-                            break
-                    except:
-                        continue
-
-                if mfa_field:
-                    if not mfa_code:
-                        raise Exception("MFA code required but not provided")
-
-                    logger.info("Entering MFA code...")
-                    mfa_field.clear()
-                    mfa_field.send_keys(mfa_code)
-
-                    # Find and click MFA submit button
-                    mfa_button = None
-                    for selector in login_selectors:
-                        try:
-                            mfa_button = self.driver.find_element(*selector)
-                            break
-                        except:
-                            continue
-
-                    if mfa_button:
-                        logger.info("Clicking MFA submit button...")
-                        mfa_button.click()
-                        time.sleep(5)
-
-                        current_url = self.driver.current_url
-                        logger.info(f"URL after MFA: {current_url}")
-
-                        if any(pattern in current_url.lower() for pattern in success_patterns):
-                            logger.info("Login with MFA successful")
-                            return True
-
-            # Final check - if we're not on login page anymore, assume success
-            final_url = self.driver.current_url
-            if "login" not in final_url.lower():
-                logger.info("Login appears successful - not on login page")
+                logger.info("Login with MFA successful")
                 return True
 
-            logger.error("Login failed - still on login page")
-            return False
+            except TimeoutException:
+                logger.error("MFA fields not found or timeout during MFA")
+                return False
 
         except Exception as e:
             logger.error(f"Login failed with exception: {e}")
@@ -400,187 +364,38 @@ class HubTokenService:
             return False
 
     def _extract_token_from_browser(self) -> Optional[Dict[str, Any]]:
-        """Extract token from browser localStorage and sessionStorage"""
+        """Extract token from localStorage - exactly like renovar_token_simplified.py"""
         try:
             logger.info("Extracting token from browser storage")
 
-            # Enhanced token extraction script for Auth0 and various storage locations
-            token_script = """
-            // Helper function to search all storages
-            function findTokens() {
-                var results = {
-                    localStorage: {},
-                    sessionStorage: {},
-                    cookies: {},
-                    auth0: {}
-                };
-                
-                // Check localStorage
-                for (var i = 0; i < localStorage.length; i++) {
-                    var key = localStorage.key(i);
-                    try {
-                        var value = localStorage.getItem(key);
-                        if (key.toLowerCase().includes('token') || 
-                            key.toLowerCase().includes('auth') ||
-                            key.toLowerCase().includes('jwt') ||
-                            key.toLowerCase().includes('access')) {
-                            results.localStorage[key] = value;
-                        }
-                    } catch(e) {}
-                }
-                
-                // Check sessionStorage
-                for (var i = 0; i < sessionStorage.length; i++) {
-                    var key = sessionStorage.key(i);
-                    try {
-                        var value = sessionStorage.getItem(key);
-                        if (key.toLowerCase().includes('token') || 
-                            key.toLowerCase().includes('auth') ||
-                            key.toLowerCase().includes('jwt') ||
-                            key.toLowerCase().includes('access')) {
-                            results.sessionStorage[key] = value;
-                        }
-                    } catch(e) {}
-                }
-                
-                // Check cookies
-                document.cookie.split(';').forEach(function(cookie) {
-                    var parts = cookie.trim().split('=');
-                    if (parts.length === 2) {
-                        var key = parts[0];
-                        if (key.toLowerCase().includes('token') || 
-                            key.toLowerCase().includes('auth') ||
-                            key.toLowerCase().includes('jwt') ||
-                            key.toLowerCase().includes('access')) {
-                            results.cookies[key] = parts[1];
-                        }
-                    }
-                });
-                
-                // Check Auth0 specific patterns
-                var auth0Keys = [
-                    'auth0.is.authenticated',
-                    'auth0.ssodata',
-                    'com.auth0.auth',
-                    'a0-access_token',
-                    'a0-id_token'
-                ];
-                
-                auth0Keys.forEach(function(key) {
-                    var value = localStorage.getItem(key) || sessionStorage.getItem(key);
-                    if (value) {
-                        results.auth0[key] = value;
-                    }
-                });
-                
-                return results;
-            }
-            
-            // Execute search
-            return findTokens();
-            """
+            local_storage_keys = self.driver.execute_script(
+                "return Object.keys(window.localStorage);")
+            oidc_key = next(
+                (k for k in local_storage_keys if k.startswith("oidc.user:")), None)
 
-            all_tokens = self.driver.execute_script(token_script)
-            logger.info(f"Token search results: {all_tokens}")
-
-            if not all_tokens:
-                logger.error("No token data found in any storage")
-                return None
-            
-            # Try to find the actual token in the results
-            token = None
-            token_source = None
-            
-            # Check localStorage first
-            for key, value in all_tokens.get('localStorage', {}).items():
-                if value and len(str(value)) > 10:  # Tokens are usually longer
-                    try:
-                        # Try to parse as JSON
-                        parsed = json.loads(value) if isinstance(value, str) and value.startswith('{') else value
-                        if isinstance(parsed, dict):
-                            if 'access_token' in parsed:
-                                token = parsed['access_token']
-                                token_source = f"localStorage.{key}.access_token"
-                                break
-                            elif 'token' in parsed:
-                                token = parsed['token']
-                                token_source = f"localStorage.{key}.token"
-                                break
-                        else:
-                            # Direct token value
-                            token = str(value)
-                            token_source = f"localStorage.{key}"
-                            break
-                    except:
-                        # Use raw value
-                        token = str(value)
-                        token_source = f"localStorage.{key}"
-                        break
-            
-            # Check sessionStorage if no token found
-            if not token:
-                for key, value in all_tokens.get('sessionStorage', {}).items():
-                    if value and len(str(value)) > 10:
-                        try:
-                            parsed = json.loads(value) if isinstance(value, str) and value.startswith('{') else value
-                            if isinstance(parsed, dict):
-                                if 'access_token' in parsed:
-                                    token = parsed['access_token']
-                                    token_source = f"sessionStorage.{key}.access_token"
-                                    break
-                                elif 'token' in parsed:
-                                    token = parsed['token']
-                                    token_source = f"sessionStorage.{key}.token"
-                                    break
-                            else:
-                                token = str(value)
-                                token_source = f"sessionStorage.{key}"
-                                break
-                        except:
-                            token = str(value)
-                            token_source = f"sessionStorage.{key}"
-                            break
-            
-            # Check Auth0 specific locations
-            if not token:
-                for key, value in all_tokens.get('auth0', {}).items():
-                    if value and len(str(value)) > 10:
-                        token = str(value)
-                        token_source = f"auth0.{key}"
-                        break
-            
-            # Check cookies as last resort
-            if not token:
-                for key, value in all_tokens.get('cookies', {}).items():
-                    if value and len(str(value)) > 10:
-                        token = str(value)
-                        token_source = f"cookies.{key}"
-                        break
-
-            if not token:
-                logger.error("No valid token found in any storage location")
-                logger.info("Available storage data for debugging:")
-                for storage_type, storage_data in all_tokens.items():
-                    if storage_data:
-                        logger.info(f"{storage_type}: {list(storage_data.keys())}")
+            if not oidc_key:
+                logger.error("Chave OIDC não encontrada")
                 return None
 
-            logger.info(f"Token found in: {token_source}")
-            logger.info(f"Token preview: {token[:50]}..." if len(token) > 50 else f"Token: {token}")
+            oidc_data_raw = self.driver.execute_script(
+                f"return window.localStorage.getItem('{oidc_key}');")
+            oidc_data = json.loads(oidc_data_raw)
 
-            # For now, assume 24-hour expiry since we might not have expiry info
-            expires_at = datetime.now() + timedelta(hours=24)
+            token = oidc_data.get("access_token")
+            expires_at = oidc_data.get("expires_at")
 
-            logger.info("Token extracted successfully")
+            if not token:
+                logger.error("Token não encontrado")
+                return None
+
             return {
                 'token': token,
-                'expires_at': expires_at,
-                'extracted_at': datetime.now(),
-                'source': token_source
+                'expires_at': datetime.fromtimestamp(expires_at) if expires_at else datetime.now() + timedelta(hours=8),
+                'extracted_at': datetime.now()
             }
 
         except Exception as e:
-            logger.error(f"Token extraction failed: {e}")
+            logger.error(f"Erro ao extrair token: {e}")
             return None
 
     def _save_token_to_database(self, user_login: str, token_data: Dict[str, Any]) -> Optional[int]:
@@ -604,12 +419,27 @@ class HubTokenService:
                 datetime.now()
             )
 
-            result = execute_query(insert_query, params)
-
-            # Get the inserted ID
-            id_query = "SELECT LAST_INSERT_ID() as id"
-            id_result = execute_query(id_query, fetch=True)
-            token_id = id_result[0]['id'] if id_result else None
+            # Execute insert and get the connection to retrieve last insert ID
+            connection = None
+            cursor = None
+            token_id = None
+            
+            try:
+                from database.connection import get_database_connection
+                connection = get_database_connection()
+                if not connection:
+                    raise Exception("Failed to connect to database")
+                    
+                cursor = connection.cursor()
+                cursor.execute(insert_query, params)
+                token_id = cursor.lastrowid  # Get the auto-increment ID
+                connection.commit()
+                
+            finally:
+                if cursor:
+                    cursor.close()
+                if connection and connection.is_connected():
+                    connection.close()
 
             logger.info(f"Token saved to database with ID: {token_id}")
             return token_id
@@ -650,7 +480,7 @@ class HubTokenService:
 
             # Save to database
             token_id = self._save_token_to_database(user_login, token_data)
-            if not token_id:
+            if token_id is None:
                 return TokenExtractionResult(
                     success=False,
                     message="Database save failed",

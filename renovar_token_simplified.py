@@ -275,7 +275,7 @@ class HubXPTokenExtractor:
 
             # Configurações comuns
             options.add_argument("--disable-gpu")
-            options.add_argument("--headless=new")
+            # options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-web-security")
@@ -346,14 +346,18 @@ class HubXPTokenExtractor:
                 By.CSS_SELECTOR, "button[aria-label='Continuar']")
             submit_button.click()
 
-            # MFA
+            # MFA - Aguarda aparecer os campos
             mfa_fields = WebDriverWait(self.driver, 30).until(
                 EC.presence_of_all_elements_located(
-                    (By.CSS_SELECTOR, "input[pattern='[0-9]*']"))
+                    (By.CSS_SELECTOR, "input[class='G7DrImLjomaOopqdA6D6dA==']"))
             )
 
+            # Preenche cada campo com um dígito do MFA
+            mfa_code = credentials['mfa']
             for i, campo in enumerate(mfa_fields):
-                campo.send_keys(credentials['mfa'][i])
+                if i < len(mfa_code):
+                    campo.clear()
+                    campo.send_keys(mfa_code[i])
 
             try:
                 mfa_submit = self.driver.find_element(
