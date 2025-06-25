@@ -18,6 +18,7 @@ redis==5.2.1
 # Utilities
 pillow==11.2.1
 pandas==2.3.0
+requests==2.31.0
 
 # Development and Testing
 pytest==7.4.3

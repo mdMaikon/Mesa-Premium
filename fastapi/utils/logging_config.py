@@ -9,9 +9,14 @@ def setup_logging(log_level: str = "INFO"):
     """
     Setup application logging
     """
-    # Create logs directory in project root
-    project_root = Path(__file__).parent.parent.parent
-    log_dir = project_root / "logs"
+    # Create logs directory - use /app/logs in Docker or relative path otherwise
+    if Path("/app").exists():
+        # Running in Docker container
+        log_dir = Path("/app/logs")
+    else:
+        # Running locally
+        project_root = Path(__file__).parent.parent.parent
+        log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     
     # Configure logging format
@@ -22,14 +27,19 @@ def setup_logging(log_level: str = "INFO"):
     for handler in root.handlers[:]:
         root.removeHandler(handler)
     
-    # Create file handler with explicit mode
-    file_handler = logging.FileHandler(
-        log_dir / "fastapi_app.log", 
-        mode='a',  # append mode
-        encoding='utf-8'
-    )
-    file_handler.setLevel(getattr(logging, log_level.upper()))
-    file_handler.setFormatter(logging.Formatter(log_format))
+    # Create file handler with explicit mode (only if we can write to logs)
+    file_handler = None
+    try:
+        file_handler = logging.FileHandler(
+            log_dir / "fastapi_app.log", 
+            mode='a',  # append mode
+            encoding='utf-8'
+        )
+        file_handler.setLevel(getattr(logging, log_level.upper()))
+        file_handler.setFormatter(logging.Formatter(log_format))
+    except PermissionError:
+        # If we can't write to file, just use console logging
+        pass
     
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -38,7 +48,8 @@ def setup_logging(log_level: str = "INFO"):
     
     # Configure root logger
     root.setLevel(getattr(logging, log_level.upper()))
-    root.addHandler(file_handler)
+    if file_handler:
+        root.addHandler(file_handler)
     root.addHandler(console_handler)
     
     # Configure specific loggers

@@ -12,7 +12,7 @@ import os
 # Setup logging
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 
-# Create FastAPI instance
+# Create FastAPI instance  
 app = FastAPI(
     title="MenuAutomacoes API",
     description="API for Hub XP token extraction and multi-automation platform",
