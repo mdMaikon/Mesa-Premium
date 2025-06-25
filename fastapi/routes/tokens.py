@@ -10,10 +10,11 @@ from models.hub_token import (
 )
 from services.hub_token_service import HubTokenService
 from database.connection import execute_query
+from utils.log_sanitizer import get_sanitized_logger, mask_username, mask_token
 import logging
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_sanitized_logger(__name__)
 
 @router.post("/token/extract", response_model=TokenExtractionResult)
 async def extract_hub_token(
@@ -24,7 +25,7 @@ async def extract_hub_token(
     Extract Hub XP token for user
     """
     try:
-        masked_user = token_request.credentials.user_login[:2] + '***' + token_request.credentials.user_login[-2:] if len(token_request.credentials.user_login) > 4 else '***'
+        masked_user = mask_username(token_request.credentials.user_login)
         logger.info(f"Token extraction request for user: {masked_user}")
         
         # Initialize service
@@ -64,7 +65,20 @@ async def get_token_status(user_login: str) -> Dict[str, Any]:
     """
     try:
         service = HubTokenService()
-        status = await service.get_token_status(user_login)
+        status = service.get_token_status(user_login)
+        
+        if status is None:
+            # Return default status when service returns None
+            return {
+                "user_login": mask_username(user_login),
+                "has_token": False,
+                "expires_at": None,
+                "extracted_at": None,
+                "created_at": None,
+                "is_valid": False,
+                "message": "No token found or error retrieving status"
+            }
+        
         return status
         
     except Exception as e:
@@ -91,13 +105,17 @@ async def get_token_history(user_login: str, limit: int = 10) -> Dict[str, Any]:
         
         tokens = execute_query(query, (user_login, limit), fetch=True)
         
+        # Ensure tokens is not None
+        if tokens is None:
+            tokens = []
+        
         return {
             "user_login": user_login,
             "total_tokens": len(tokens),
             "tokens": [
                 {
                     "id": token['id'],
-                    "token": token['token'][:50] + "..." if len(token['token']) > 50 else token['token'],
+                    "token": mask_token(token['token']),
                     "expires_at": token['expires_at'].isoformat() if token['expires_at'] else None,
                     "extracted_at": token['extracted_at'].isoformat(),
                     "created_at": token['created_at'].isoformat(),

@@ -69,6 +69,15 @@ class SensitiveDataSanitizer:
             return username[:1] + '*' * (len(username) - 1)
         
         return username[:2] + '*' * (len(username) - 4) + username[-2:]
+    
+    @classmethod
+    def mask_token(cls, token: str) -> str:
+        """Mask token for logging purposes"""
+        if not token or len(token) <= 8:
+            return '[TOKEN]'
+        
+        # Keep first 4 and last 4 characters, mask the middle
+        return token[:4] + '*' * (len(token) - 8) + token[-4:]
 
 
 class SanitizedLoggerAdapter(logging.LoggerAdapter):
@@ -104,3 +113,13 @@ def mask_sensitive_data(data: Any) -> str:
         return str([mask_sensitive_data(item) for item in data])
     else:
         return str(data)
+
+
+def mask_username(username: str) -> str:
+    """Convenience function to mask username for logging"""
+    return SensitiveDataSanitizer.mask_username(username)
+
+
+def mask_token(token: str) -> str:
+    """Convenience function to mask token for logging"""
+    return SensitiveDataSanitizer.mask_token(token)

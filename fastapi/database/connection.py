@@ -7,11 +7,12 @@ import os
 from dotenv import load_dotenv
 import logging
 from contextlib import contextmanager
+from utils.log_sanitizer import get_sanitized_logger
 
 # Load environment variables
 load_dotenv()
 
-logger = logging.getLogger(__name__)
+logger = get_sanitized_logger(__name__)
 
 # Global connection pool instance
 _connection_pool = None
@@ -79,11 +80,16 @@ def execute_query(query: str, params: tuple = None, fetch: bool = False):
             cursor = connection.cursor(dictionary=True)
             cursor.execute(query, params or ())
             
-            if fetch:
+            if fetch or query.strip().upper().startswith('SELECT'):
+                # Always fetch all results to avoid 'Unread result found' error
                 result = cursor.fetchall()
             else:
+                # For INSERT, UPDATE, DELETE operations
                 connection.commit()
                 result = cursor.rowcount
+                # Consume any remaining results
+                while cursor.nextset():
+                    pass
             
             cursor.close()
             

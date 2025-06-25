@@ -8,6 +8,12 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime
 from services.fixed_income_service import FixedIncomeService
+from services.fixed_income_exceptions import (
+    TokenRetrievalError,
+    DataProcessingError,
+    DatabaseError,
+    APIConnectionError
+)
 from utils.state_manager import get_state_manager
 
 logger = logging.getLogger(__name__)
@@ -88,11 +94,23 @@ async def process_fixed_income_data(background_tasks: BackgroundTasks):
             message="Fixed income processing started in background",
         )
         
+    except TokenRetrievalError as e:
+        logger.error(f"Token retrieval failed: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed: {str(e)}"
+        )
+    except APIConnectionError as e:
+        logger.error(f"API connection failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"External service unavailable: {str(e)}"
+        )
     except Exception as e:
-        logger.error(f"Error starting fixed income processing: {e}")
+        logger.error(f"Unexpected error starting fixed income processing: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to start processing: {str(e)}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 @router.get("/fixed-income/process-sync", response_model=ProcessingResponse)

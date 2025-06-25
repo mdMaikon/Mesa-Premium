@@ -80,7 +80,7 @@ def get_uvicorn_config():
         config.update({
             "reload": False,
             "workers": int(os.getenv("WORKERS", "4")),
-            "log_level": os.getenv("LOG_LEVEL", "warning"),
+            "log_level": os.getenv("LOG_LEVEL", "warning").lower(),
             "access_log": False,  # Reduce logging overhead
             "server_header": False,  # Hide server information
             "date_header": False,  # Reduce response headers
@@ -90,14 +90,14 @@ def get_uvicorn_config():
         config.update({
             "reload": False,
             "workers": int(os.getenv("WORKERS", "2")),
-            "log_level": os.getenv("LOG_LEVEL", "info"),
+            "log_level": os.getenv("LOG_LEVEL", "info").lower(),
             "access_log": True,
         })
     else:
         # Development configuration
         config.update({
             "reload": True,
-            "log_level": os.getenv("LOG_LEVEL", "debug"),
+            "log_level": os.getenv("LOG_LEVEL", "debug").lower(),
             "access_log": True,
         })
     

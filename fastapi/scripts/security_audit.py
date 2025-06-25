@@ -28,6 +28,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 
+# Import secure subprocess utilities
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.secure_subprocess import SecureSubprocessRunner, SecureSubprocessError
+
 
 class SecurityAuditor:
     """Automated security auditor for Python dependencies"""
@@ -44,8 +48,12 @@ class SecurityAuditor:
     def run_pip_audit(self) -> Dict[str, Any]:
         """Run pip-audit and return parsed results"""
         try:
-            result = subprocess.run(
-                ["pip-audit", "--format=json"],
+            # Use secure subprocess runner for pip-audit
+            runner = SecureSubprocessRunner()
+            
+            result = runner.run_command(
+                command=["pip-audit", "--format=json"],
+                timeout=300,
                 capture_output=True,
                 text=True,
                 check=False
@@ -56,11 +64,20 @@ class SecurityAuditor:
             
             return json.loads(result.stdout)
         
+        except SecureSubprocessError as e:
+            print(f"ERROR: Security validation failed: {e}")
+            sys.exit(1)
         except FileNotFoundError:
             print("ERROR: pip-audit not found. Install with: pip install pip-audit")
             sys.exit(1)
+        except subprocess.TimeoutExpired:
+            print("ERROR: pip-audit timed out after 5 minutes")
+            sys.exit(1)
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse pip-audit output: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"ERROR: Unexpected error running pip-audit: {e}")
             sys.exit(1)
     
     def analyze_vulnerabilities(self, audit_data: Dict[str, Any]) -> Dict[str, Any]:

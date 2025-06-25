@@ -26,6 +26,10 @@ import os
 from pathlib import Path
 from datetime import datetime
 
+# Import secure subprocess utilities
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.secure_subprocess import SecureSubprocessRunner, run_python_script, run_pytest, SecureSubprocessError
+
 
 class Deployer:
     """Deployment manager for different environments"""
@@ -75,12 +79,17 @@ class Deployer:
         print("🔍 Running dependency security audit...")
         
         try:
-            # Run security audit script
-            result = subprocess.run(
-                [sys.executable, "scripts/security_audit.py", "--ci"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True
+            # Run security audit script using secure subprocess
+            audit_script = self.project_root / "scripts" / "security_audit.py"
+            if not audit_script.exists():
+                print("⚠️  Security audit script not found, skipping...")
+                return True
+            
+            result = run_python_script(
+                audit_script,
+                args=["--ci"],
+                working_dir=self.project_root,
+                timeout=300
             )
             
             if result.returncode == 0:
@@ -98,8 +107,11 @@ class Deployer:
         except FileNotFoundError:
             print("⚠️  Security audit script not found, skipping...")
             return True
-        except Exception as e:
+        except (SecureSubprocessError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
             print(f"⚠️  Security audit failed: {e}")
+            return self.environment == "development"
+        except Exception as e:
+            print(f"⚠️  Unexpected error in security audit: {e}")
             return self.environment == "development"
     
     def update_dependencies(self) -> bool:
@@ -107,11 +119,17 @@ class Deployer:
         print("📦 Updating vulnerable dependencies...")
         
         try:
-            result = subprocess.run(
-                [sys.executable, "scripts/update_dependencies.py", "--force"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True
+            # Validate script exists before execution
+            update_script = self.project_root / "scripts" / "update_dependencies.py"
+            if not update_script.exists():
+                print("⚠️  Dependency update script not found, skipping...")
+                return True
+            
+            result = run_python_script(
+                update_script,
+                args=["--force"],
+                working_dir=self.project_root,
+                timeout=600
             )
             
             if result.returncode == 0:
@@ -133,16 +151,36 @@ class Deployer:
         print("🧪 Running test suite...")
         
         try:
-            # Run key tests for deployment validation
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", 
-                 "tests/unit/test_state_manager.py",
-                 "tests/integration/test_api_endpoints.py::TestHealthEndpoints::test_health_check_success",
-                 "tests/integration/test_api_endpoints.py::TestAutomationEndpoints::test_list_automations",
-                 "-v", "--tb=short"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
+            # Validate test files exist before execution
+            test_files = [
+                "tests/unit/test_state_manager.py",
+                "tests/integration/test_api_endpoints.py"
+            ]
+            
+            existing_test_files = []
+            for test_file in test_files:
+                test_path = self.project_root / test_file
+                if test_path.exists():
+                    existing_test_files.append(test_file)  # Keep relative paths
+            
+            if not existing_test_files:
+                print("⚠️  No test files found, skipping...")
+                return True
+            
+            # Build test arguments
+            pytest_args = ["-v", "--tb=short"]
+            
+            # Add specific test selections if files exist
+            if "tests/integration/test_api_endpoints.py" in existing_test_files:
+                existing_test_files.extend([
+                    "tests/integration/test_api_endpoints.py::TestHealthEndpoints::test_health_check_success",
+                    "tests/integration/test_api_endpoints.py::TestAutomationEndpoints::test_list_automations"
+                ])
+            
+            result = run_pytest(
+                test_paths=existing_test_files,
+                args=pytest_args,
+                working_dir=self.project_root,
                 timeout=120
             )
             
@@ -202,25 +240,34 @@ class Deployer:
         print("📦 Checking Python dependencies...")
         
         try:
-            # Use requirements-secure.txt if available, otherwise requirements.txt
-            requirements_file = "requirements-secure.txt"
-            if not (self.project_root / requirements_file).exists():
-                requirements_file = "requirements.txt"
+            # Validate requirements file exists and is safe
+            requirements_files = ["requirements-secure.txt", "requirements.txt"]
+            requirements_file = None
+            
+            for req_file in requirements_files:
+                req_path = self.project_root / req_file
+                if req_path.exists():
+                    requirements_file = str(req_path)
+                    break
+            
+            if not requirements_file:
+                print("⚠️  No requirements file found, skipping...")
+                return True
             
             # In development, skip actual installation due to externally managed environment
             if self.environment == "development":
                 print(f"ℹ️  Development mode: Skipping package installation")
                 print(f"💡 Dependencies should be installed in virtual environment or with --break-system-packages")
-                if (self.project_root / requirements_file).exists():
-                    print(f"📋 Requirements file: {requirements_file}")
+                print(f"📋 Requirements file: {requirements_file}")
                 return True
             
-            # For staging/production, attempt installation
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-r", requirements_file, "--break-system-packages"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True
+            # For staging/production, attempt installation with secure subprocess
+            from utils.secure_subprocess import run_pip_command
+            
+            result = run_pip_command(
+                args=["install", "-r", requirements_file, "--break-system-packages"],
+                working_dir=self.project_root,
+                timeout=900
             )
             
             if result.returncode == 0:

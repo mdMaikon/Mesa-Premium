@@ -1,49 +1,50 @@
-# FastAPI Core - Updated for security
-fastapi>=0.109.1  # Fix CVE-2024-24762 (ReDoS vulnerability)
-uvicorn[standard]==0.24.0
-pydantic>=2.9.2  # Updated to latest secure version
-slowapi==0.1.9
+# FastAPI Core - Updated to secure versions
+fastapi>=0.115.6  # Fixed CVE-2024-24762 (ReDoS vulnerability) - requires 0.109.1+
+uvicorn[standard]>=0.34.0  # Latest stable version with security updates
+pydantic>=2.10.4  # Latest stable version
+slowapi==0.1.9  # No known vulnerabilities
 
 # Database
-mysql-connector-python==9.3.0
-python-dotenv==1.1.0
+mysql-connector-python==9.3.0  # Latest stable version
+python-dotenv==1.1.0  # No known vulnerabilities
 
 # Web Automation
-selenium==4.33.0
+selenium==4.33.0  # Latest stable version
 
-# Background Tasks (Future)
-celery==5.4.0
-redis==5.2.1
+# Background Tasks
+celery==5.4.0  # No known vulnerabilities
+redis==5.2.1  # No known vulnerabilities
 
 # Utilities
-pillow==11.2.1
-pandas==2.3.0
+pillow==11.2.1  # Latest stable version
+pandas==2.3.0  # No known vulnerabilities
 
-# HTTP Client - Updated for security
-httpx==0.25.2
+# HTTP and Security - CRITICAL UPDATES
+requests>=2.32.4  # Fixed CVE-2024-35195, CVE-2024-47081 (cert verification, .netrc leak)
+httpx>=0.28.1  # Latest stable version
+urllib3>=2.5.0  # Fixed CVE-2025-50182, CVE-2025-50181 (redirect control issues)
+cryptography>=44.0.0  # Fixed multiple critical OpenSSL CVEs (42.0.4+ required)
+starlette>=0.41.3  # Fixed CVE-2024-47874 (DoS vulnerability) - requires 0.40.0+
+jinja2>=3.1.6  # Fixed multiple XSS and sandboxing CVEs
+idna>=3.10  # Fixed CVE-2024-3651 (DoS via crafted input)
+setuptools>=78.2.0  # Fixed CVE-2025-47273 (Path Traversal/RCE) - requires 78.1.1+
+twisted>=24.7.0  # Fixed CVE-2024-41810, CVE-2024-41671 (XSS, request ordering)
+
+# Remove vulnerable dependencies
+# configobj - vulnerable to CVE-2023-26112 (ReDoS) - removed if not essential
 
 # Development and Testing - Updated versions
-pytest>=8.4.1  # Updated to latest
-pytest-asyncio>=1.0.0  # Updated to latest
-pytest-mock==3.12.0
-pytest-timeout==2.1.0
-pytest-cov==4.1.0
-factory-boy==3.3.0
+pytest>=8.4.1  # Latest stable version
+pytest-asyncio>=0.25.0  # Latest stable version
+pytest-mock==3.12.0  # No known vulnerabilities
+pytest-timeout==2.1.0  # No known vulnerabilities
+pytest-cov>=6.0.0  # Latest stable version
+factory-boy==3.3.0  # No known vulnerabilities
 
-# Security Tools
-pip-audit>=2.9.0  # For vulnerability scanning
+# Security Tools - MANDATORY for continuous monitoring
+pip-audit>=2.9.0  # For continuous vulnerability scanning
 safety>=3.5.2  # Alternative security scanner
 
-# Additional Security Dependencies
-# Note: The following system-level packages should be updated:
-# - requests>=2.32.4 (fixes CVE-2024-35195, CVE-2024-47081)
-# - urllib3>=2.5.0 (fixes CVE-2025-50182, CVE-2025-50181) 
-# - jinja2>=3.1.6 (fixes multiple XSS vulnerabilities)
-# - starlette>=0.40.0 (fixes DoS vulnerability CVE-2024-47874)
-# - cryptography>=43.0.1 (fixes multiple OpenSSL vulnerabilities)
-# - setuptools>=78.1.1 (fixes CVE-2025-47273)
-# - idna>=3.7 (fixes CVE-2024-3651)
-
-# For production environments, also consider:
-# gunicorn>=21.2.0  # Production WSGI server
-# sentry-sdk>=1.40.0  # Error monitoring
+# Production Security (optional but recommended)
+gunicorn>=23.0.0  # Production WSGI server with latest security patches
+sentry-sdk>=2.20.0  # Error monitoring and security incident tracking

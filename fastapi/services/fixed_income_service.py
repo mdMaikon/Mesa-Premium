@@ -17,12 +17,28 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
+from utils.log_sanitizer import get_sanitized_logger
+from .fixed_income_exceptions import (
+    TokenRetrievalError,
+    DataProcessingError,
+    DataDownloadError,
+    DatabaseError,
+    DataValidationError,
+    APIConnectionError,
+    ColumnFormattingError,
+    FilteringError,
+    RuleApplicationError,
+    DataInsertionError,
+    TableClearError,
+    StatsCalculationError,
+    CategoryProcessingError
+)
 
 # Load environment variables from project root
 project_root = os.path.join(os.path.dirname(__file__), '..', '..')
 load_dotenv(os.path.join(project_root, '.env'), override=True)
 
-logger = logging.getLogger(__name__)
+logger = get_sanitized_logger(__name__)
 
 
 class FixedIncomeService:
@@ -59,9 +75,12 @@ class FixedIncomeService:
                 f"Valid token retrieved, expires at: {token_data['expires_at']}")
             return self.token
 
+        except mysql.connector.Error as e:
+            logger.error(f"Database error retrieving token: {e}")
+            raise TokenRetrievalError(f"Failed to retrieve token from database: {e}")
         except Exception as e:
-            logger.error(f"Error retrieving token from database: {e}")
-            return None
+            logger.error(f"Unexpected error retrieving token: {e}")
+            raise TokenRetrievalError(f"Unexpected error during token retrieval: {e}")
 
     def get_headers(self) -> Dict[str, str]:
         """Return headers for API requests"""
@@ -79,7 +98,32 @@ class FixedIncomeService:
         }
 
     def extract_percentage_value(self, text) -> float:
-        """Extract numeric value from rate strings"""
+        """
+        Extract numeric value from rate strings and convert to decimal format
+        
+        This method processes Brazilian financial rate formats and converts them
+        to standardized decimal values for calculations and storage.
+        
+        Args:
+            text: Input string containing percentage value (e.g., "12,5%", "8.25%", "CDI + 2,3%")
+            
+        Returns:
+            float: Decimal representation of the percentage (e.g., 0.125 for "12,5%")
+                  Returns 0.0 for invalid or empty inputs
+                  
+        Examples:
+            >>> extract_percentage_value("12,5%")
+            0.125
+            >>> extract_percentage_value("CDI + 2,3%")
+            0.023
+            >>> extract_percentage_value("")
+            0.0
+            
+        Note:
+            - Handles both comma (Brazilian) and dot (international) decimal separators
+            - Extracts first numeric value found in complex strings
+            - Automatically converts to decimal by dividing by 100
+        """
         if pd.isna(text) or text == "":
             return 0.0
 
@@ -95,7 +139,36 @@ class FixedIncomeService:
         return 0.0
 
     def format_tax_columns(self, df) -> pd.DataFrame:
-        """Format tax columns creating clean versions"""
+        """
+        Format tax columns creating clean numeric versions for analysis
+        
+        This method processes financial data columns that contain Brazilian
+        rate formats and creates clean decimal versions suitable for calculations
+        and database storage. The original columns are preserved for reference.
+        
+        Columns processed:
+        - Tax.Mín: Creates Tax.Mín_Clean with decimal values
+        - ROA E. Aprox.: Converts to decimal format
+        - Taxa de Emissão: Converts to decimal format
+        
+        Args:
+            df: DataFrame containing financial data with Brazilian rate formats
+            
+        Returns:
+            pd.DataFrame: Enhanced DataFrame with additional clean numeric columns
+            
+        Raises:
+            ColumnFormattingError: If required columns are missing or data types are invalid
+            
+        Examples:
+            Input: Tax.Mín = "CDI + 2,5%"
+            Output: Tax.Mín_Clean = 0.025
+            
+        Business Logic:
+        - Preserves original columns for audit trails
+        - Standardizes percentage formats across different sources
+        - Enables numerical analysis and database operations
+        """
         try:
             logger.info("Formatting tax columns...")
 
@@ -123,9 +196,15 @@ class FixedIncomeService:
             logger.info("Column formatting completed")
             return df
 
+        except (KeyError, AttributeError) as e:
+            logger.error(f"Column access error during formatting: {e}")
+            raise ColumnFormattingError(f"Missing or invalid column during formatting: {e}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"Data type error during column formatting: {e}")
+            raise ColumnFormattingError(f"Invalid data type during formatting: {e}")
         except Exception as e:
-            logger.error(f"Error during column formatting: {e}")
-            return df
+            logger.error(f"Unexpected error during column formatting: {e}")
+            raise ColumnFormattingError(f"Unexpected error during column formatting: {e}")
 
     def filter_igpm_assets(self, df) -> pd.DataFrame:
         """Remove assets with IGP-M indexer (optimized for pipeline)"""
@@ -143,9 +222,12 @@ class FixedIncomeService:
                 f"IGP-M filter applied: {lines_removed} assets removed")
             return df_filtered
 
+        except KeyError as e:
+            logger.error(f"Missing column during IGP-M filtering: {e}")
+            raise FilteringError(f"Required column missing for IGP-M filtering: {e}")
         except Exception as e:
-            logger.error(f"Error filtering IGP-M assets: {e}")
-            return df
+            logger.error(f"Unexpected error filtering IGP-M assets: {e}")
+            raise FilteringError(f"Unexpected error during IGP-M filtering: {e}")
 
     def apply_ntn_rules(self, df) -> pd.DataFrame:
         """Apply specific rules for NTN assets"""

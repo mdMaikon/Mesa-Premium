@@ -25,3 +25,4 @@ Thumbs.db
 # Project specific
 setup_menu.bat
 user_config.json
+.check_history

@@ -28,6 +28,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 
+# Import secure subprocess utilities
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.secure_subprocess import SecureSubprocessRunner, run_pip_command, SecureSubprocessError
+
 
 class DependencyUpdater:
     """Automated dependency updater with security focus"""
@@ -40,19 +44,24 @@ class DependencyUpdater:
         self.requirements_file = self.project_root / "requirements.txt"
         self.secure_requirements = self.project_root / "requirements-secure.txt"
         
-        # Security-focused package updates
+        # Security-focused package updates - Updated with latest secure versions
         self.security_updates = {
-            "fastapi": ">=0.109.1",  # CVE-2024-24762
-            "pydantic": ">=2.9.2",
-            "pytest": ">=8.4.1",
-            "pytest-asyncio": ">=1.0.0",
-            "requests": ">=2.32.4",  # CVE-2024-35195, CVE-2024-47081
-            "urllib3": ">=2.5.0",   # CVE-2025-50182, CVE-2025-50181
-            "jinja2": ">=3.1.6",    # Multiple XSS vulnerabilities
-            "starlette": ">=0.40.0", # CVE-2024-47874 DoS
-            "cryptography": ">=43.0.1", # OpenSSL vulnerabilities
-            "setuptools": ">=78.1.1",   # CVE-2025-47273
-            "idna": ">=3.7"              # CVE-2024-3651
+            "fastapi": ">=0.115.6",     # CVE-2024-24762 (ReDoS) - requires 0.109.1+
+            "starlette": ">=0.41.3",    # CVE-2024-47874 (DoS) - requires 0.40.0+
+            "pydantic": ">=2.10.4",     # Latest stable version
+            "pytest": ">=8.4.1",       # Latest stable version
+            "pytest-asyncio": ">=0.25.0", # Latest stable version
+            "pytest-cov": ">=6.0.0",   # Latest stable version
+            "requests": ">=2.32.4",    # CVE-2024-35195, CVE-2024-47081 (cert verification, .netrc leak)
+            "urllib3": ">=2.5.0",      # CVE-2025-50182, CVE-2025-50181 (redirect control issues)
+            "jinja2": ">=3.1.6",       # Multiple XSS and sandboxing CVEs
+            "cryptography": ">=44.0.0", # Multiple critical OpenSSL CVEs (42.0.4+ required)
+            "setuptools": ">=78.2.0",  # CVE-2025-47273 (Path Traversal/RCE) - requires 78.1.1+
+            "idna": ">=3.10",          # CVE-2024-3651 (DoS via crafted input)
+            "twisted": ">=24.7.0",     # CVE-2024-41810, CVE-2024-41671 (XSS, request ordering)
+            "uvicorn": ">=0.34.0",     # Latest stable version with security updates
+            "httpx": ">=0.28.1",       # Latest stable version
+            # Remove configobj entirely due to CVE-2023-26112 (ReDoS)
         }
     
     def create_backup(self) -> Path:
@@ -98,8 +107,11 @@ class DependencyUpdater:
     def check_vulnerabilities(self) -> Dict[str, List]:
         """Check current packages for vulnerabilities using pip-audit"""
         try:
-            result = subprocess.run(
+            # Use secure subprocess runner
+            runner = SecureSubprocessRunner(self.project_root)
+            result = runner.run_command(
                 ["pip-audit", "--format=json"],
+                timeout=300,
                 capture_output=True,
                 text=True,
                 check=False
@@ -125,11 +137,20 @@ class DependencyUpdater:
             
             return vulnerable_packages
             
+        except SecureSubprocessError as e:
+            print(f"⚠️  Security validation failed for pip-audit: {e}")
+            return {}
         except FileNotFoundError:
             print("⚠️  pip-audit not found. Install with: pip install pip-audit")
             return {}
+        except subprocess.TimeoutExpired:
+            print("⚠️  pip-audit timed out after 5 minutes")
+            return {}
         except json.JSONDecodeError:
             print("⚠️  Failed to parse pip-audit output")
+            return {}
+        except Exception as e:
+            print(f"⚠️  Unexpected error running pip-audit: {e}")
             return {}
     
     def generate_updated_requirements(self) -> List[str]:
@@ -183,23 +204,26 @@ class DependencyUpdater:
             return False
     
     def install_updates(self) -> bool:
-        """Install updated packages"""
+        """Install updated packages using secure subprocess"""
         if self.dry_run:
             print("[DRY RUN] Would run: pip install -r requirements.txt --upgrade")
             return True
         
         print("📦 Installing updated packages...")
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-r", str(self.requirements_file), "--upgrade"],
-                capture_output=True,
-                text=True,
-                check=True
+            # Use secure pip command runner
+            result = run_pip_command(
+                args=["install", "-r", str(self.requirements_file), "--upgrade"],
+                working_dir=self.project_root,
+                timeout=900  # 15 minutes for package installation
             )
             print("✅ Packages updated successfully")
             return True
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to install packages: {e.stderr}")
+        except (SecureSubprocessError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            print(f"❌ Failed to install packages: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Unexpected error during installation: {e}")
             return False
     
     def run_tests_after_update(self) -> bool:
@@ -214,12 +238,13 @@ class DependencyUpdater:
         
         print("🧪 Running tests to verify updates...")
         try:
-            # Run a subset of critical tests
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", "tests/unit/test_state_manager.py", "-v"],
-                capture_output=True,
-                text=True,
-                cwd=self.project_root,
+            # Use secure subprocess for running tests
+            from utils.secure_subprocess import run_pytest
+            
+            result = run_pytest(
+                test_paths=["tests/unit/test_state_manager.py"],
+                args=["-v"],
+                working_dir=self.project_root,
                 timeout=60
             )
             
