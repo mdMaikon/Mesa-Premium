@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # FastAPI Application
   api:
-    build: 
+    build:
       context: ./fastapi
       dockerfile: Dockerfile
     container_name: mesa_premium_api

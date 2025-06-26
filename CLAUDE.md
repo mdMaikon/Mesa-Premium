@@ -14,12 +14,21 @@ Este é um projeto de automação Python que oferece múltiplas funcionalidades 
 
 ## Comandos Comuns
 
-### Configuração do Ambiente
+### Configuração do Ambiente (Poetry)
 ```bash
-# Instalar dependências
-pip install -r requirements.txt
+# Instalar dependências do projeto
+poetry install
 
-# Configurar ambiente (Windows)
+# Instalar apenas dependências de produção
+poetry install --only main
+
+# Instalar apenas dependências de desenvolvimento
+poetry install --only dev
+
+# Ativar ambiente virtual
+poetry shell
+
+# Configurar ambiente (Windows - opcional)
 setup_menu.bat
 
 # Instalar Chrome/ChromeDriver (WSL/Linux)
@@ -27,24 +36,62 @@ chmod +x install_chrome_wsl.sh
 ./install_chrome_wsl.sh
 ```
 
+### Pre-commit Hooks (Qualidade de Código)
+```bash
+# Instalar hooks do pre-commit
+poetry run task pre-commit-install
+
+# Executar hooks em todos os arquivos
+poetry run task pre-commit-run
+
+# Verificação de segurança com Bandit
+poetry run task security
+
+# Commitizen para commits padronizados
+poetry run cz commit
+```
+
 ### Executando as Aplicações
 
 #### API FastAPI (Recomendado)
 ```bash
-# Executar API completa
-cd fastapi
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Executar API completa com Poetry
+poetry run task dev
+
+# Ou executar diretamente
+poetry run uvicorn fastapi.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Acesso à documentação: http://localhost:8000/docs
 ```
 
-#### GUI Tradicional
+#### Desenvolvimento e Testes
+```bash
+# Executar testes
+poetry run task test
+
+# Executar testes com cobertura
+poetry run task test-cov
+
+# Formatar código
+poetry run task format
+
+# Verificar lint
+poetry run task lint
+
+# Corrigir problemas de lint
+poetry run task lint-fix
+
+# Executar verificação completa (lint + format + tests)
+poetry run task check
+```
+
+#### GUI Tradicional (Legacy)
 ```bash
 # Aplicação principal GUI
-python renovar_token.py
+poetry run python renovar_token.py
 
 # Importar como módulo
-python -c "from renovar_token import extract_hub_token; extract_hub_token()"
+poetry run python -c "from renovar_token import extract_hub_token; extract_hub_token()"
 ```
 
 ### Operações do Banco de Dados

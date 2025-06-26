@@ -2,26 +2,27 @@
 Refactored Hub XP Token Extraction Service
 Implements Single Responsibility Principle and reduces cyclomatic complexity
 """
-import os
+
+import asyncio
+import functools
 import json
-import logging
-from utils.log_sanitizer import get_sanitized_logger, mask_sensitive_data, mask_username
+import os
 import platform
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from typing import Any
+
+from database.connection import execute_query
+from models.hub_token import TokenExtractionResult
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
-from typing import Dict, Any, Optional, Tuple, List
-from database.connection import execute_query
-from models.hub_token import TokenExtractionResult
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-import functools
-import time
+from selenium.webdriver.support.ui import WebDriverWait
+from utils.log_sanitizer import get_sanitized_logger, mask_username
 
 logger = get_sanitized_logger(__name__)
 
@@ -31,30 +32,37 @@ class HubXPCustomExceptions:
 
     class HubXPException(Exception):
         """Base exception for Hub XP operations"""
+
         pass
 
     class EnvironmentDetectionError(HubXPException):
         """Error detecting environment"""
+
         pass
 
     class WebDriverSetupError(HubXPException):
         """Error setting up WebDriver"""
+
         pass
 
     class LoginError(HubXPException):
         """Error during login process"""
+
         pass
 
     class MFAError(LoginError):
         """Error during MFA authentication"""
+
         pass
 
     class TokenExtractionError(HubXPException):
         """Error extracting token"""
+
         pass
 
     class BlockedAccessError(LoginError):
         """Access blocked by Hub XP"""
+
         pass
 
 
@@ -74,16 +82,19 @@ class EnvironmentDetector:
         return "unknown"
 
     @staticmethod
-    def get_chrome_binary_path(environment: str) -> Optional[str]:
+    def get_chrome_binary_path(environment: str) -> str | None:
         """Get Chrome binary path for different environments"""
         if environment == "windows":
             windows_paths = [
                 r"C:\Program Files\Google\Chrome\Application\chrome.exe",
                 r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
                 os.path.expanduser(
-                    r"~\AppData\Local\Google\Chrome\Application\chrome.exe")
+                    r"~\AppData\Local\Google\Chrome\Application\chrome.exe"
+                ),
             ]
-            return next((path for path in windows_paths if os.path.exists(path)), None)
+            return next(
+                (path for path in windows_paths if os.path.exists(path)), None
+            )
 
         elif environment in ["linux", "wsl"]:
             linux_paths = [
@@ -91,9 +102,11 @@ class EnvironmentDetector:
                 "/usr/bin/google-chrome-stable",
                 "/usr/bin/chromium-browser",
                 "/usr/bin/chromium",
-                "/snap/bin/chromium"
+                "/snap/bin/chromium",
             ]
-            return next((path for path in linux_paths if os.path.exists(path)), None)
+            return next(
+                (path for path in linux_paths if os.path.exists(path)), None
+            )
 
         return None
 
@@ -109,7 +122,8 @@ class WebDriverManager:
         try:
             chrome_options = self._get_chrome_options()
             binary_path = EnvironmentDetector.get_chrome_binary_path(
-                self.environment)
+                self.environment
+            )
 
             if binary_path:
                 chrome_options.binary_location = binary_path
@@ -131,7 +145,8 @@ class WebDriverManager:
         except Exception as e:
             logger.error(f"WebDriver setup failed: {e}")
             raise HubXPCustomExceptions.WebDriverSetupError(
-                f"Failed to setup WebDriver: {e}")
+                f"Failed to setup WebDriver: {e}"
+            ) from e
 
     def _get_chrome_options(self) -> Options:
         """Get Chrome options based on environment with anti-bot detection measures"""
@@ -139,7 +154,8 @@ class WebDriverManager:
 
         # Critical anti-bot detection measures
         options.add_argument(
-            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        )
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--disable-blink-features=AutomationControlled")
 
@@ -170,8 +186,9 @@ class WebDriverManager:
         # Critical automation detection bypass
         # Fixed: was 'enable-logging'
         options.add_experimental_option(
-            'excludeSwitches', ['enable-automation'])
-        options.add_experimental_option('useAutomationExtension', False)
+            "excludeSwitches", ["enable-automation"]
+        )
+        options.add_experimental_option("useAutomationExtension", False)
 
         # Additional stealth measures
         options.add_argument("--disable-default-apps")
@@ -190,22 +207,22 @@ class WebDriverManager:
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined,
                 });
-                
+
                 // Add chrome runtime object
                 window.chrome = {
                     runtime: {}
                 };
-                
+
                 // Fake plugins
                 Object.defineProperty(navigator, 'plugins', {
                     get: () => [1, 2, 3, 4, 5],
                 });
-                
+
                 // Set proper languages
                 Object.defineProperty(navigator, 'languages', {
                     get: () => ['pt-BR', 'pt', 'en'],
                 });
-                
+
                 // Override permissions query
                 const originalQuery = window.navigator.permissions.query;
                 window.navigator.permissions.query = (parameters) => (
@@ -213,7 +230,7 @@ class WebDriverManager:
                         Promise.resolve({ state: Notification.permission }) :
                         originalQuery(parameters)
                 );
-                
+
                 // Remove automation indicators
                 delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
                 delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
@@ -221,9 +238,9 @@ class WebDriverManager:
             """
 
             # Execute stealth measures using CDP
-            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': stealth_js
-            })
+            driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js}
+            )
 
             logger.info("Advanced stealth measures applied successfully")
 
@@ -239,13 +256,15 @@ class HubXPAuthenticator:
         self.driver = driver
         self.wait = WebDriverWait(driver, 60)
 
-    def perform_login(self, user_login: str, password: str, mfa_code: Optional[str] = None) -> bool:
+    def perform_login(
+        self, user_login: str, password: str, mfa_code: str | None = None
+    ) -> bool:
         """
         Perform Hub XP login with MFA
 
         Args:
             user_login: User login credentials
-            password: User password  
+            password: User password
             mfa_code: Optional MFA code (required for successful login)
 
         Returns:
@@ -271,7 +290,8 @@ class HubXPAuthenticator:
             # Handle MFA
             if not self._handle_mfa_authentication(mfa_code):
                 raise HubXPCustomExceptions.MFAError(
-                    "MFA authentication failed")
+                    "MFA authentication failed"
+                )
 
             logger.info("Login with MFA successful")
             return True
@@ -281,7 +301,7 @@ class HubXPAuthenticator:
         except Exception as e:
             logger.error(f"Login failed with exception: {e}")
             self._log_debugging_info()
-            raise HubXPCustomExceptions.LoginError(f"Login failed: {e}")
+            raise HubXPCustomExceptions.LoginError(f"Login failed: {e}") from e
 
     def _navigate_to_hub(self) -> None:
         """Navigate to Hub XP homepage"""
@@ -295,7 +315,8 @@ class HubXPAuthenticator:
 
         if "bloqueado" in page_title or "blocked" in page_title:
             logger.error(
-                "Access blocked by Hub XP - anti-bot protection detected")
+                "Access blocked by Hub XP - anti-bot protection detected"
+            )
             raise HubXPCustomExceptions.BlockedAccessError(
                 "Hub XP blocked access - try again later or use different approach"
             )
@@ -321,14 +342,15 @@ class HubXPAuthenticator:
         selectors = [
             (By.NAME, "account"),  # Hub XP specific
             (By.CSS_SELECTOR, "input[placeholder*='account']"),
-            (By.XPATH, "//input[@type='text' or @type='email']")
+            (By.XPATH, "//input[@type='text' or @type='email']"),
         ]
 
         for selector in selectors:
             try:
                 wait_short = WebDriverWait(self.driver, 5)
                 field = wait_short.until(
-                    EC.presence_of_element_located(selector))
+                    EC.presence_of_element_located(selector)
+                )
                 logger.info(f"Username field found with selector: {selector}")
                 return field
             except TimeoutException:
@@ -337,7 +359,8 @@ class HubXPAuthenticator:
         logger.error("Username field not found. Page source:")
         logger.error(self.driver.page_source[:1000])
         raise HubXPCustomExceptions.LoginError(
-            "Username field not found with any selector")
+            "Username field not found with any selector"
+        )
 
     def _find_password_field(self):
         """Find password field using multiple selectors"""
@@ -345,7 +368,7 @@ class HubXPAuthenticator:
             (By.NAME, "password"),  # Hub XP specific
             (By.ID, "password"),
             (By.CSS_SELECTOR, "input[type='password']"),
-            (By.XPATH, "//input[@type='password']")
+            (By.XPATH, "//input[@type='password']"),
         ]
 
         for selector in selectors:
@@ -353,7 +376,7 @@ class HubXPAuthenticator:
                 field = self.driver.find_element(*selector)
                 logger.info(f"Password field found with selector: {selector}")
                 return field
-            except:
+            except Exception:
                 continue
 
         raise HubXPCustomExceptions.LoginError("Password field not found")
@@ -378,7 +401,7 @@ class HubXPAuthenticator:
             (By.XPATH, "//button[contains(text(), 'Login')]"),
             (By.XPATH, "//input[@type='submit']"),
             (By.CSS_SELECTOR, ".btn-login"),
-            (By.CSS_SELECTOR, ".login-button")
+            (By.CSS_SELECTOR, ".login-button"),
         ]
 
         for selector in selectors:
@@ -386,12 +409,12 @@ class HubXPAuthenticator:
                 button = self.driver.find_element(*selector)
                 logger.info(f"Login button found with selector: {selector}")
                 return button
-            except:
+            except Exception:
                 continue
 
         raise HubXPCustomExceptions.LoginError("Login button not found")
 
-    def _handle_mfa_authentication(self, mfa_code: Optional[str]) -> bool:
+    def _handle_mfa_authentication(self, mfa_code: str | None) -> bool:
         """
         Handle MFA authentication
 
@@ -405,14 +428,17 @@ class HubXPAuthenticator:
 
         if not mfa_code:
             raise HubXPCustomExceptions.MFAError(
-                "MFA code required but not provided")
+                "MFA code required but not provided"
+            )
 
         try:
             # Find MFA fields
             mfa_fields = WebDriverWait(self.driver, 30).until(
                 EC.presence_of_all_elements_located(
-                    (By.CSS_SELECTOR,
-                     "input[class='G7DrImLjomaOopqdA6D6dA==']")
+                    (
+                        By.CSS_SELECTOR,
+                        "input[class='G7DrImLjomaOopqdA6D6dA==']",
+                    )
                 )
             )
 
@@ -442,7 +468,7 @@ class HubXPAuthenticator:
             logger.error("MFA fields not found or timeout during MFA")
             return False
 
-    def _fill_mfa_fields(self, mfa_fields: List, mfa_code: str) -> None:
+    def _fill_mfa_fields(self, mfa_fields: list, mfa_code: str) -> None:
         """Fill MFA fields with code digits"""
         logger.info(f"Entering MFA code in {len(mfa_fields)} fields...")
 
@@ -454,17 +480,19 @@ class HubXPAuthenticator:
                 field.send_keys(digit)
 
                 # Verify field was filled
-                filled_value = field.get_attribute('value')
+                _filled_value = field.get_attribute("value")
                 logger.info(
-                    f"DEBUG: Field {i} value after filling: '[MASKED]'")
+                    f"DEBUG: Field {i} value after filling: '[MASKED]'"
+                )
 
     def _submit_mfa_form(self) -> None:
         """Submit MFA form"""
         try:
             mfa_submit = self.driver.find_element(
-                By.CSS_SELECTOR, "button[aria-label='Confirmar e acessar conta']"
+                By.CSS_SELECTOR,
+                "button[aria-label='Confirmar e acessar conta']",
             )
-        except:
+        except Exception:
             mfa_submit = self.driver.find_element(
                 By.CSS_SELECTOR, "soma-button[type='submit']"
             )
@@ -476,16 +504,22 @@ class HubXPAuthenticator:
         try:
             current_url = self.driver.current_url
             # Remove query parameters to avoid exposing sensitive data
-            safe_url = current_url.split(
-                '?')[0] if '?' in current_url else current_url
+            safe_url = (
+                current_url.split("?")[0]
+                if "?" in current_url
+                else current_url
+            )
             logger.error(f"Current URL (safe): {safe_url}")
 
             page_title = self.driver.title
             # Truncate title to avoid potential sensitive data exposure
-            safe_title = page_title[:100] + \
-                "..." if len(page_title) > 100 else page_title
+            safe_title = (
+                page_title[:100] + "..."
+                if len(page_title) > 100
+                else page_title
+            )
             logger.error(f"Page title (safe): {safe_title}")
-        except:
+        except Exception:
             logger.error("Unable to retrieve page debugging information")
 
 
@@ -495,7 +529,7 @@ class TokenExtractor:
     def __init__(self, driver: webdriver.Chrome):
         self.driver = driver
 
-    def extract_token_from_browser(self) -> Optional[Dict[str, Any]]:
+    def extract_token_from_browser(self) -> dict[str, Any] | None:
         """
         Extract token from browser localStorage
 
@@ -515,13 +549,15 @@ class TokenExtractor:
 
             # Find OIDC key
             oidc_key = next(
-                (k for k in local_storage_keys if k.startswith("oidc.user:")), None
+                (k for k in local_storage_keys if k.startswith("oidc.user:")),
+                None,
             )
 
             if not oidc_key:
                 logger.error("OIDC key not found")
                 raise HubXPCustomExceptions.TokenExtractionError(
-                    "OIDC key not found")
+                    "OIDC key not found"
+                )
 
             # Extract OIDC data
             oidc_data_raw = self.driver.execute_script(
@@ -536,29 +572,34 @@ class TokenExtractor:
             if not token:
                 logger.error("Token not found in OIDC data")
                 raise HubXPCustomExceptions.TokenExtractionError(
-                    "Token not found")
+                    "Token not found"
+                )
 
             return {
-                'token': token,
-                'expires_at': datetime.fromtimestamp(expires_at) if expires_at else datetime.now() + timedelta(hours=8),
-                'extracted_at': datetime.now()
+                "token": token,
+                "expires_at": datetime.fromtimestamp(expires_at)
+                if expires_at
+                else datetime.now() + timedelta(hours=8),
+                "extracted_at": datetime.now(),
             }
 
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing OIDC data: {e}")
             raise HubXPCustomExceptions.TokenExtractionError(
-                f"Error parsing OIDC data: {e}")
+                f"Error parsing OIDC data: {e}"
+            ) from e
         except Exception as e:
             logger.error(f"Error extracting token: {e}")
             raise HubXPCustomExceptions.TokenExtractionError(
-                f"Error extracting token: {e}")
+                f"Error extracting token: {e}"
+            ) from e
 
 
 class TokenRepository:
     """Handles token persistence in database"""
 
     @staticmethod
-    def save_token(user_login: str, token_data: Dict[str, Any]) -> bool:
+    def save_token(user_login: str, token_data: dict[str, Any]) -> bool:
         """
         Save token to database
 
@@ -580,15 +621,19 @@ class TokenRepository:
                 VALUES (%s, %s, %s, %s, NOW())
             """
 
-            execute_query(insert_query, (
-                user_login,
-                token_data['token'],
-                token_data['expires_at'],
-                token_data['extracted_at']
-            ))
+            execute_query(
+                insert_query,
+                (
+                    user_login,
+                    token_data["token"],
+                    token_data["expires_at"],
+                    token_data["extracted_at"],
+                ),
+            )
 
             logger.info(
-                f"Token saved successfully for user: {mask_username(user_login)}")
+                f"Token saved successfully for user: {mask_username(user_login)}"
+            )
             return True
 
         except Exception as e:
@@ -596,7 +641,7 @@ class TokenRepository:
             return False
 
     @staticmethod
-    def get_token_status(user_login: str) -> Optional[Dict[str, Any]]:
+    def get_token_status(user_login: str) -> dict[str, Any] | None:
         """
         Get token status from database
 
@@ -609,9 +654,9 @@ class TokenRepository:
         try:
             query = """
                 SELECT token, expires_at, extracted_at, created_at
-                FROM hub_tokens 
-                WHERE user_login = %s 
-                ORDER BY created_at DESC 
+                FROM hub_tokens
+                WHERE user_login = %s
+                ORDER BY created_at DESC
                 LIMIT 1
             """
 
@@ -619,21 +664,23 @@ class TokenRepository:
             if result:
                 token_data = result[0]
                 return {
-                    'user_login': mask_username(user_login),
-                    'has_token': True,
-                    'expires_at': token_data['expires_at'],
-                    'extracted_at': token_data['extracted_at'],
-                    'created_at': token_data['created_at'],
-                    'is_valid': token_data['expires_at'] > datetime.now() if token_data['expires_at'] else False
+                    "user_login": mask_username(user_login),
+                    "has_token": True,
+                    "expires_at": token_data["expires_at"],
+                    "extracted_at": token_data["extracted_at"],
+                    "created_at": token_data["created_at"],
+                    "is_valid": token_data["expires_at"] > datetime.now()
+                    if token_data["expires_at"]
+                    else False,
                 }
 
             return {
-                'user_login': mask_username(user_login),
-                'has_token': False,
-                'expires_at': None,
-                'extracted_at': None,
-                'created_at': None,
-                'is_valid': False
+                "user_login": mask_username(user_login),
+                "has_token": False,
+                "expires_at": None,
+                "extracted_at": None,
+                "created_at": None,
+                "is_valid": False,
             }
 
         except Exception as e:
@@ -657,9 +704,12 @@ class RefactoredHubTokenService:
         self.environment = EnvironmentDetector.detect_environment()
         self.webdriver_manager = WebDriverManager(self.environment)
         self._executor = ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="webdriver")
+            max_workers=2, thread_name_prefix="webdriver"
+        )
 
-    async def extract_token(self, user_login: str, password: str, mfa_code: Optional[str] = None) -> TokenExtractionResult:
+    async def extract_token(
+        self, user_login: str, password: str, mfa_code: str | None = None
+    ) -> TokenExtractionResult:
         """
         Extract Hub XP token using async WebDriver execution
 
@@ -678,11 +728,8 @@ class RefactoredHubTokenService:
             result = await loop.run_in_executor(
                 self._executor,
                 functools.partial(
-                    self._extract_token_sync,
-                    user_login,
-                    password,
-                    mfa_code
-                )
+                    self._extract_token_sync, user_login, password, mfa_code
+                ),
             )
 
             return result
@@ -692,16 +739,18 @@ class RefactoredHubTokenService:
             return TokenExtractionResult(
                 success=False,
                 message=str(e),
-                user_login=mask_username(user_login)
+                user_login=mask_username(user_login),
             )
 
-    def _extract_token_sync(self, user_login: str, password: str, mfa_code: Optional[str] = None) -> TokenExtractionResult:
+    def _extract_token_sync(
+        self, user_login: str, password: str, mfa_code: str | None = None
+    ) -> TokenExtractionResult:
         """
         Synchronous token extraction using specialized classes
 
         Args:
             user_login: User login credentials
-            password: User password  
+            password: User password
             mfa_code: Optional MFA code
 
         Returns:
@@ -716,13 +765,14 @@ class RefactoredHubTokenService:
             # Perform authentication
             authenticator = HubXPAuthenticator(driver)
             login_success = authenticator.perform_login(
-                user_login, password, mfa_code)
+                user_login, password, mfa_code
+            )
 
             if not login_success:
                 return TokenExtractionResult(
                     success=False,
                     message="Login failed",
-                    user_login=mask_username(user_login)
+                    user_login=mask_username(user_login),
                 )
 
             # Extract token
@@ -733,7 +783,7 @@ class RefactoredHubTokenService:
                 return TokenExtractionResult(
                     success=False,
                     message="Token extraction failed",
-                    user_login=mask_username(user_login)
+                    user_login=mask_username(user_login),
                 )
 
             # Save token
@@ -743,14 +793,14 @@ class RefactoredHubTokenService:
                 return TokenExtractionResult(
                     success=False,
                     message="Token save failed",
-                    user_login=mask_username(user_login)
+                    user_login=mask_username(user_login),
                 )
 
             return TokenExtractionResult(
                 success=True,
                 message="Token extracted successfully",
                 user_login=mask_username(user_login),
-                expires_at=token_data['expires_at']
+                expires_at=token_data["expires_at"],
             )
 
         except HubXPCustomExceptions.HubXPException as e:
@@ -758,23 +808,23 @@ class RefactoredHubTokenService:
             return TokenExtractionResult(
                 success=False,
                 message=str(e),
-                user_login=mask_username(user_login)
+                user_login=mask_username(user_login),
             )
         except Exception as e:
             logger.error(f"Unexpected error during token extraction: {e}")
             return TokenExtractionResult(
                 success=False,
                 message=f"Unexpected error: {e}",
-                user_login=mask_username(user_login)
+                user_login=mask_username(user_login),
             )
         finally:
             if driver:
                 try:
                     driver.quit()
-                except:
+                except Exception:
                     pass
 
-    def get_token_status(self, user_login: str) -> Optional[Dict[str, Any]]:
+    def get_token_status(self, user_login: str) -> dict[str, Any] | None:
         """
         Get token status for user
 
@@ -788,5 +838,5 @@ class RefactoredHubTokenService:
 
     def __del__(self):
         """Cleanup thread pool on destruction"""
-        if hasattr(self, '_executor'):
+        if hasattr(self, "_executor"):
             self._executor.shutdown(wait=False)

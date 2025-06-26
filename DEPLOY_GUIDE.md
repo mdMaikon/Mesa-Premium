@@ -31,6 +31,11 @@ sudo chmod +x /usr/local/bin/docker-compose
 ```bash
 git clone https://github.com/seu-usuario/MenuAutomacoes.git
 cd MenuAutomacoes
+
+# Configurar Poetry para produção (opcional, mas recomendado)
+curl -sSL https://install.python-poetry.org | python3 -
+export PATH="$HOME/.local/bin:$PATH"
+poetry install --only=main
 ```
 
 ### 3. Configurar Environment
@@ -231,8 +236,8 @@ docker-compose restart nginx
 ### 1. Configuração FastAPI
 ```yaml
 # No docker-compose.yml
-command: ["python", "-m", "uvicorn", "main:app", 
-          "--host", "0.0.0.0", "--port", "8000", 
+command: ["python", "-m", "uvicorn", "main:app",
+          "--host", "0.0.0.0", "--port", "8000",
           "--workers", "4",  # Ajustar conforme RAM
           "--worker-class", "uvicorn.workers.UvicornWorker",
           "--access-log", "--no-server-header"]

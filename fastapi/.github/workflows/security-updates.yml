@@ -25,44 +25,44 @@ on:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
-    
+
     outputs:
       has_critical: ${{ steps.scan.outputs.has_critical }}
       has_high: ${{ steps.scan.outputs.has_high }}
       should_update: ${{ steps.scan.outputs.should_update }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
+
     - name: Install security tools
       run: |
         python -m pip install --upgrade pip
         pip install pip-audit safety
-        
+
     - name: Run security scan
       id: scan
       run: |
         cd fastapi
         python scripts/automated_security_updates.py --mode scan --severity ${{ github.event.inputs.severity || 'high' }} > scan_results.txt
-        
+
         # Extract critical and high vulnerability counts
         CRITICAL_COUNT=$(grep -o "🔴 Critical: [0-9]*" scan_results.txt | grep -o "[0-9]*" || echo "0")
         HIGH_COUNT=$(grep -o "🟠 High: [0-9]*" scan_results.txt | grep -o "[0-9]*" || echo "0")
-        
+
         echo "has_critical=${{ CRITICAL_COUNT > 0 }}" >> $GITHUB_OUTPUT
         echo "has_high=${{ HIGH_COUNT > 0 }}" >> $GITHUB_OUTPUT
         echo "should_update=${{ CRITICAL_COUNT > 0 || HIGH_COUNT > 0 }}" >> $GITHUB_OUTPUT
-        
+
         # Upload scan results
         echo "Critical vulnerabilities: $CRITICAL_COUNT"
         echo "High severity vulnerabilities: $HIGH_COUNT"
-        
+
     - name: Upload scan results
       uses: actions/upload-artifact@v4
       with:
@@ -74,44 +74,44 @@ jobs:
     needs: security-scan
     runs-on: ubuntu-latest
     if: needs.security-scan.outputs.should_update == 'true'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
+
     - name: Install dependencies
       run: |
         cd fastapi
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pip-audit safety
-        
+
     - name: Run automated updates
       id: update
       run: |
         cd fastapi
         python scripts/automated_security_updates.py --mode update --severity ${{ github.event.inputs.severity || 'high' }} --notify > update_results.txt
-        
+
         # Check if updates were successful
         if grep -q "✅ Updates applied successfully" update_results.txt; then
           echo "update_successful=true" >> $GITHUB_OUTPUT
         else
           echo "update_successful=false" >> $GITHUB_OUTPUT
         fi
-        
+
     - name: Run tests after update
       if: steps.update.outputs.update_successful == 'true'
       run: |
         cd fastapi
         python -m pytest tests/unit/test_state_manager.py -v
-        
+
     - name: Create Pull Request
       if: steps.update.outputs.update_successful == 'true'
       uses: peter-evans/create-pull-request@v5
@@ -119,47 +119,47 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         commit-message: |
           🔒 Automated security updates
-          
+
           - Updated vulnerable dependencies to secure versions
           - Fixed critical and high-severity CVEs
           - All tests passing
-          
+
           🤖 Generated with [Claude Code](https://claude.ai/code)
-          
+
           Co-Authored-By: Claude <noreply@anthropic.com>
         title: '🔒 Automated Security Updates - ${{ github.run_number }}'
         body: |
           ## 🔒 Automated Security Dependency Updates
-          
+
           This PR contains automated security updates for vulnerable dependencies.
-          
+
           ### 📊 Summary
           - **Critical vulnerabilities**: ${{ needs.security-scan.outputs.has_critical && 'Yes' || 'No' }}
           - **High severity vulnerabilities**: ${{ needs.security-scan.outputs.has_high && 'Yes' || 'No' }}
           - **Tests status**: ✅ Passing
-          
+
           ### 🔧 Changes
           - Updated vulnerable packages to secure versions
           - Applied fixes for known CVEs
           - Maintained backward compatibility
-          
+
           ### 🧪 Testing
           - [x] Unit tests passing
           - [x] Security scan clean
           - [x] Dependencies resolved
-          
+
           ### 🎯 Next Steps
           1. Review the changes
           2. Run additional integration tests if needed
           3. Deploy to staging environment
           4. Merge and deploy to production
-          
+
           ---
           🤖 This PR was created automatically by the security update pipeline.
-          
+
         branch: security-updates-${{ github.run_number }}
         base: main
-        
+
     - name: Upload update results
       uses: actions/upload-artifact@v4
       with:
@@ -171,7 +171,7 @@ jobs:
     needs: [security-scan, automated-update]
     runs-on: ubuntu-latest
     if: always() && (needs.security-scan.outputs.has_critical == 'true' && needs.automated-update.result == 'failure')
-    
+
     steps:
     - name: Notify on critical vulnerabilities
       run: |
@@ -179,7 +179,7 @@ jobs:
         echo "Critical vulnerabilities detected but automated updates failed!"
         echo "Manual intervention required immediately."
         echo "Review the scan results and apply updates manually."
-        
+
         # In production, this would send alerts to Slack/Teams/Email
         # curl -X POST -H 'Content-type: application/json' \
         #   --data '{"text":"🚨 Critical security vulnerabilities detected in MenuAutomacoes! Automated updates failed. Manual intervention required."}' \
@@ -189,19 +189,19 @@ jobs:
     needs: [security-scan, automated-update]
     runs-on: ubuntu-latest
     if: always()
-    
+
     steps:
     - name: Download scan results
       uses: actions/download-artifact@v4
       with:
         name: security-scan-results
-        
+
     - name: Download update results
       uses: actions/download-artifact@v4
       with:
         name: security-update-results
       continue-on-error: true
-        
+
     - name: Generate security report
       run: |
         echo "# Security Update Report - $(date)" > security_report.md
@@ -211,14 +211,14 @@ jobs:
         cat scan_results.txt >> security_report.md
         echo '```' >> security_report.md
         echo "" >> security_report.md
-        
+
         if [ -f update_results.txt ]; then
           echo "## Update Results" >> security_report.md
           echo '```' >> security_report.md
           cat update_results.txt >> security_report.md
           echo '```' >> security_report.md
         fi
-        
+
     - name: Upload security report
       uses: actions/upload-artifact@v4
       with:

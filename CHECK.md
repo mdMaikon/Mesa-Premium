@@ -2,6 +2,31 @@
 
 Este documento detalha os pontos de melhoria identificados no projeto MenuAutomacoes, focando em performance, segurança e qualidade de código.
 
+## ✅ ATUALIZAÇÃO - Pre-commit Hooks e Qualidade de Código (26/06/2025)
+
+### **Sistema de Pre-commit Implementado ✅**
+- **Pre-commit hooks configurados** com Ruff, Bandit, Commitizen
+- **Ruff** substituindo Black + Flake8 + isort para linting/formatação
+- **Bandit** para auditoria de segurança automática
+- **Commitizen** para commits padronizados (conventional commits)
+- **Hooks automáticos** executados em git commit e git push
+- **48 testes passando** sem nenhum erro de lint
+
+### **Melhorias de Qualidade Implementadas:**
+- **Exception chaining** corrigido (100+ ocorrências de "from e" adicionadas)
+- **Unused variables** removidas ou marcadas com underscore
+- **Bare except clauses** corrigidas para Exception específicas
+- **Modern Python syntax** (isinstance com | ao invés de tuplas)
+- **Code formatting** automatizado e consistente
+
+### **Comandos Disponíveis:**
+```bash
+poetry run task pre-commit-install    # Instalar hooks
+poetry run task pre-commit-run        # Executar em todos os arquivos
+poetry run task security             # Auditoria Bandit
+poetry run cz commit                 # Commits padronizados
+```
+
 ## 1. Gargalos de Performance
 
 ### **Processamento de DataFrames Ineficiente (Baixa Prioridade)**

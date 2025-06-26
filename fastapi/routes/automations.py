@@ -2,21 +2,27 @@
 General automation endpoints
 Future automations will be added here
 """
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any, List
+
+from typing import Any
+
 from pydantic import BaseModel
+
+from fastapi import APIRouter
 
 router = APIRouter()
 
+
 class AutomationInfo(BaseModel):
     """Automation information"""
+
     name: str
     description: str
     status: str
     version: str
-    endpoints: List[str]
+    endpoints: list[str]
 
-@router.get("/automations", response_model=List[AutomationInfo])
+
+@router.get("/automations", response_model=list[AutomationInfo])
 async def list_automations():
     """
     List all available automations
@@ -30,8 +36,8 @@ async def list_automations():
             endpoints=[
                 "/api/token/extract",
                 "/api/token/status/{user_login}",
-                "/api/token/history/{user_login}"
-            ]
+                "/api/token/history/{user_login}",
+            ],
         ),
         AutomationInfo(
             name="Fixed Income Data Processing",
@@ -43,15 +49,16 @@ async def list_automations():
                 "/api/fixed-income/process-sync",
                 "/api/fixed-income/status",
                 "/api/fixed-income/stats",
-                "/api/fixed-income/categories"
-            ]
-        )
+                "/api/fixed-income/categories",
+            ],
+        ),
     ]
-    
+
     return automations
 
+
 @router.get("/automations/stats")
-async def get_automation_stats() -> Dict[str, Any]:
+async def get_automation_stats() -> dict[str, Any]:
     """
     Get automation platform statistics
     """
@@ -62,5 +69,5 @@ async def get_automation_stats() -> Dict[str, Any]:
         "total_executions_today": 0,  # Would come from database
         "success_rate": 0.0,  # Would be calculated from logs
         "last_execution": None,  # Would come from database
-        "platform_status": "healthy"
+        "platform_status": "healthy",
     }

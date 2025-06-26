@@ -8,7 +8,7 @@
 
 ### 📁 **Arquivos Criados/Configurados**
 - ✅ `docker-compose.yml` - Orquestração completa
-- ✅ `fastapi/Dockerfile` - Build otimizado  
+- ✅ `fastapi/Dockerfile` - Build otimizado
 - ✅ `nginx/nginx.conf` - Proxy reverso
 - ✅ `nginx/sites-available/mesa_premium.conf` - Config localhost
 - ✅ `.env` - Variáveis de ambiente (local)
@@ -20,6 +20,11 @@
 ```bash
 # Executar script completo de teste
 ./scripts/test-local-deploy.sh
+
+# Para desenvolvimento com Poetry (alternativa)
+poetry install
+poetry run task check  # Verificação completa
+poetry run task run_dev  # Servidor local
 ```
 
 ### **Opção 2: Passo a Passo Manual**
@@ -105,7 +110,7 @@ sg docker -c "docker compose logs api"
 sg docker -c "docker compose build api --no-cache"
 ```
 
-#### **Nginx 502 Bad Gateway**  
+#### **Nginx 502 Bad Gateway**
 ```bash
 # Verificar se API está rodando
 sg docker -c "docker compose ps"
