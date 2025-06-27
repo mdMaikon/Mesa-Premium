@@ -130,6 +130,25 @@ class ThreadSafeStateManager:
                 logger.info("No processing to force stop")
 
 
+# Simple state manager for compatibility
+class StateManager:
+    """Simple state manager for API compatibility"""
+
+    def __init__(self):
+        self._state = {}
+        self._lock = threading.RLock()
+
+    def get_state(self, key: str, default: Any = None) -> Any:
+        """Get state value by key"""
+        with self._lock:
+            return self._state.get(key, default)
+
+    def set_state(self, key: str, value: Any) -> None:
+        """Set state value by key"""
+        with self._lock:
+            self._state[key] = value
+
+
 # Global singleton instance
 _state_manager_instance = None
 _instance_lock = threading.Lock()

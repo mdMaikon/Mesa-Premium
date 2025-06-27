@@ -6,7 +6,7 @@ import os
 
 import uvicorn
 from middleware.rate_limiting import rate_limit_middleware
-from routes import automations, fixed_income, health, tokens
+from routes import automations, fixed_income, health, structured, tokens
 from utils.logging_config import setup_logging
 
 from fastapi import FastAPI
@@ -56,10 +56,13 @@ app.add_middleware(
 app.middleware("http")(rate_limit_middleware)
 
 # Include routers
-app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(tokens.router, prefix="/api", tags=["tokens"])
-app.include_router(automations.router, prefix="/api", tags=["automations"])
-app.include_router(fixed_income.router, prefix="/api", tags=["fixed-income"])
+app.include_router(health.router, prefix="/api", tags=["Health"])
+app.include_router(tokens.router, prefix="/api", tags=["Renovar Token"])
+app.include_router(automations.router, prefix="/api", tags=["Automações"])
+app.include_router(
+    fixed_income.router, prefix="/api", tags=["Carteira de Juros"]
+)
+app.include_router(structured.router)
 
 
 @app.get("/")
