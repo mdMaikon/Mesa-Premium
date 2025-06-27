@@ -1,5 +1,5 @@
 # Multi-stage build para otimização de tamanho
-FROM python:3.11-slim as builder
+FROM python:3.12-slim as builder
 
 # Instalar dependências do sistema necessárias para build
 RUN apt-get update && apt-get install -y \
@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Stage de produção
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Instalar dependências runtime + Chrome para Selenium
 RUN apt-get update && apt-get install -y \

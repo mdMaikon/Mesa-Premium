@@ -208,7 +208,7 @@ poetry run pytest          # Executar testes
 - [x] Configurar Taskipy para automação
 - [x] Testar pipeline completo
 - [ ] Atualizar scripts de deploy
-- [ ] Remover requirements.txt antigos (após validação completa)
+- [X] Remover requirements.txt antigos (após validação completa)
 
 ## Notas Importantes
 
@@ -250,5 +250,3 @@ poetry add --group dev package  # Adicionar dep de desenvolvimento
 ### 📋 Próximas melhorias opcionais:
 1. Atualizar scripts de deploy para usar Poetry
 2. Configurar CI/CD com Poetry
-3. Remover requirements.txt antigos após validação completa
-4. Configurar pre-commit hooks com Ruff

@@ -61,7 +61,13 @@ poetry run task dev
 # Ou executar diretamente
 poetry run uvicorn fastapi.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Acesso à documentação: http://localhost:8000/docs
+# Para Docker: Gerar requirements.txt e build
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+export COMPOSE_BAKE=true  # Para performance otimizada
+docker compose build
+docker compose up -d
+
+# Acesso à documentação: http://localhost:8000/docs (Poetry) ou http://localhost/docs (Docker)
 ```
 
 #### Desenvolvimento e Testes
@@ -221,17 +227,21 @@ Contém credenciais MySQL da Hostinger e configurações de conexão. Criado aut
 Armazena preferências do usuário (último login usado) para conveniência.
 
 ### `requirements.txt`
-Dependências principais:
+**IMPORTANTE**: Gerado automaticamente via Poetry export para compatibilidade Docker.
+```bash
+# Gerar requirements.txt para Docker
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+```
+
+Dependências principais (gerenciadas via Poetry):
 - `selenium`: Automação web
 - `mysql-connector-python`: Conectividade com banco de dados
-- `customtkinter`: Framework GUI moderno
-- `python-dotenv`: Gerenciamento de variáveis de ambiente
-- `pillow`: Manipulação de imagens para ícones
 - `fastapi`: Framework web moderno para APIs
 - `uvicorn`: Servidor ASGI para FastAPI
 - `pandas`: Manipulação e análise de dados
 - `requests`: Cliente HTTP para APIs
 - `pydantic`: Validação de dados e serialização
+- `python-dotenv`: Gerenciamento de variáveis de ambiente
 
 ## Exemplos de Uso da API
 
@@ -278,6 +288,22 @@ A aplicação inclui configuração sofisticada do WebDriver que manipula:
 - Verificação de compatibilidade do ChromeDriver
 - Otimização específica por ambiente (modo headless para WSL/Linux)
 - Mecanismos de fallback para dependências ausentes
+
+### Build e Deploy com Poetry + Docker
+```bash
+# 1. Preparar ambiente Poetry
+poetry install --only=main
+
+# 2. Gerar requirements.txt para Docker
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+
+# 3. Build com performance otimizada
+export COMPOSE_BAKE=true
+docker compose build
+
+# 4. Deploy
+docker compose up -d
+```
 
 ### Gerenciamento de Tokens
 - Tokens são automaticamente rotacionados (tokens antigos deletados antes de inserir novos)

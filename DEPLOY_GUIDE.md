@@ -1,12 +1,14 @@
-# 🚀 Guia de Deploy VPS - Mesa Premium API
+# 🚀 Guia de Deploy VPS - MenuAutomacoes API
 
 ## 📋 Pré-requisitos VPS
 
 ### 🖥️ Servidor Requirements
-- Ubuntu 20.04+ ou CentOS 8+
-- 2GB RAM mínimo (4GB recomendado)
-- 20GB storage
-- Docker + Docker Compose instalados
+- Ubuntu 22.04+ ou Rocky Linux 9+
+- 4GB RAM mínimo (8GB recomendado para produção)
+- 40GB storage SSD
+- Python 3.12+
+- Docker + Docker Compose V2
+- Poetry para gerenciamento de dependências
 
 ### 🌐 Domínio Configurado
 - Domínio apontando para IP do VPS
@@ -14,46 +16,72 @@
 
 ## 🔧 Setup Inicial no VPS
 
-### 1. Instalar Docker
+### 1. Instalar Dependências do Sistema
 ```bash
-# Ubuntu/Debian
+# Atualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instalar Python 3.12+
+sudo apt install -y python3.12 python3.12-venv python3-pip curl git
+
+# Instalar Docker (método oficial)
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 sudo usermod -aG docker $USER
 sudo systemctl enable docker
+sudo systemctl start docker
 
-# Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+# Verificar Docker Compose V2 (já incluso no Docker moderno)
+docker compose version
 ```
 
-### 2. Clonar Repositório
+### 2. Instalar Poetry
 ```bash
+# Instalar Poetry (gerenciador de dependências)
+curl -sSL https://install.python-poetry.org | python3 -
+export PATH="$HOME/.local/bin:$PATH"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verificar instalação
+poetry --version
+```
+
+### 3. Clonar e Configurar Projeto
+```bash
+# Clonar repositório
 git clone https://github.com/seu-usuario/MenuAutomacoes.git
 cd MenuAutomacoes
 
-# Configurar Poetry para produção (opcional, mas recomendado)
-curl -sSL https://install.python-poetry.org | python3 -
-export PATH="$HOME/.local/bin:$PATH"
-poetry install --only=main
+# Instalar dependências com Poetry
+poetry install --only=main --no-dev
+
+# Verificar ambiente Poetry
+poetry env info
 ```
 
-### 3. Configurar Environment
+### 4. Configurar Environment
 ```bash
-# Copiar template de configuração
-cp .env.docker .env
+# Copiar template de produção
+cp .env.production .env
 
-# Editar com suas configurações
+# Editar com suas configurações específicas
 nano .env
+
+# Configurar variáveis Docker (se usar MySQL local)
+cp .env.docker .env.docker.local
+nano .env.docker.local
 ```
 
 ## ⚙️ Configuração de Produção
 
-### 1. Ajustar docker-compose.yml
+### 1. Preparar Dockerfile para Poetry
 ```bash
-# Para produção com MySQL Hostinger, comentar serviço mysql local
-# e usar configurações do .env para conectar na Hostinger
-nano docker-compose.yml
+# Criar requirements.txt temporário para Docker (Poetry não está no container)
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+
+# Verificar se requirements.txt foi criado
+ls -la fastapi/requirements.txt
 ```
 
 ### 2. Configurar Domínio no Nginx
@@ -64,20 +92,29 @@ sed -i 's/yourdomain.com/seudominio.com/g' nginx/sites-available/mesa_premium.co
 
 ### 3. Build e Deploy Inicial
 ```bash
-# Build das imagens
-docker-compose build
+# RECOMENDADO: Habilitar Docker Buildx Bake para performance otimizada
+export COMPOSE_BAKE=true
 
-# Subir serviços (sem SSL ainda)
-docker-compose up -d api redis
+# Build das imagens com Docker Compose V2 + Buildx Bake
+docker compose build
 
-# Verificar logs
-docker-compose logs -f api
+# Subir serviços (produção com Hostinger MySQL)
+docker compose up -d api redis nginx
+
+# Verificar status dos containers
+docker compose ps
+
+# Verificar logs da API
+docker compose logs -f api
 ```
 
 ## 🔒 Configurar SSL/TLS
 
 ### 1. Executar Script de SSL
 ```bash
+# Tornar script executável
+chmod +x scripts/setup-ssl.sh
+
 # Configurar SSL automaticamente
 ./scripts/setup-ssl.sh seudominio.com seu-email@domain.com
 ```
@@ -85,9 +122,12 @@ docker-compose logs -f api
 ### 2. Verificar SSL
 ```bash
 # Testar certificado
-curl -I https://seudominio.com/health
+curl -I https://seudominio.com/api/health
 
-# Verificar grade SSL
+# Testar documentação
+curl -I https://seudominio.com/docs
+
+# Verificar grade SSL (A+ esperado)
 # https://www.ssllabs.com/ssltest/analyze.html?d=seudominio.com
 ```
 
@@ -95,23 +135,35 @@ curl -I https://seudominio.com/health
 
 ### 1. Health Checks
 ```bash
-# API Health
-curl https://seudominio.com/health
+# API Health (deve retornar status OK)
+curl https://seudominio.com/api/health
 
-# Documentação
-curl https://seudominio.com/docs
+# Lista de automações
+curl https://seudominio.com/api/automations
+
+# Documentação Swagger
+curl -I https://seudominio.com/docs
+
+# Documentação ReDoc
+curl -I https://seudominio.com/redoc
 ```
 
-### 2. Teste de Token Extraction
+### 2. Testes de API
 ```bash
-# Teste completo via API
+# Teste de extração de token Hub XP
 curl -X POST "https://seudominio.com/api/token/extract" \
   -H "Content-Type: application/json" \
   -d '{
-    "user_login": "teste.usuario",
-    "password": "senha123",
+    "user_login": "seu.usuario",
+    "password": "sua.senha",
     "mfa_code": "123456"
   }'
+
+# Status de processamento de renda fixa
+curl https://seudominio.com/api/fixed-income/status
+
+# Estatísticas dos dados
+curl https://seudominio.com/api/fixed-income/stats
 ```
 
 ## 📊 Monitoramento
@@ -119,11 +171,11 @@ curl -X POST "https://seudominio.com/api/token/extract" \
 ### 1. Logs Centralizados
 ```bash
 # Logs em tempo real
-docker-compose logs -f
+docker compose logs -f
 
 # Logs específicos
-docker-compose logs api
-docker-compose logs nginx
+docker compose logs api
+docker compose logs nginx
 ```
 
 ### 2. Métricas do Sistema
@@ -138,32 +190,55 @@ du -sh /var/lib/docker/
 
 ### 3. Scripts de Monitoramento
 ```bash
-# Status dos containers
-docker-compose ps
+# Status dos containers (Docker Compose V2)
+docker compose ps
 
 # Reiniciar serviço específico
-docker-compose restart api
+docker compose restart api
 
-# Update e redeploy
+# Update e redeploy com Poetry
 git pull
-docker-compose build api
-docker-compose up -d api
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+docker compose build api
+docker compose up -d api
+
+# Verificar se tudo está funcionando
+docker compose logs -f api
 ```
 
 ## 🔄 Backup e Manutenção
 
 ### 1. Backup de Dados
 ```bash
-# Backup volumes Docker
-docker run --rm -v mesa_premium_mysql_data:/data -v $(pwd):/backup ubuntu tar czf /backup/mysql_backup_$(date +%Y%m%d).tar.gz /data
+# Backup da configuração Poetry
+cp pyproject.toml pyproject.toml.backup
+cp poetry.lock poetry.lock.backup
+
+# Backup de configurações
+tar czf config_backup_$(date +%Y%m%d).tar.gz .env* docker-compose.yml nginx/ mysql/
 
 # Backup de logs
-tar czf logs_backup_$(date +%Y%m%d).tar.gz nginx/logs/ fastapi/logs/
+tar czf logs_backup_$(date +%Y%m%d).tar.gz logs/ fastapi/logs/
+
+# Backup do banco Hostinger (se aplicável)
+# mysqldump -h srv719.hstgr.io -u usuario -p base_dados > backup_$(date +%Y%m%d).sql
 ```
 
-### 2. Atualizações
+### 2. Atualizações com Poetry
 ```bash
-# Script de atualização segura
+# Atualizar dependências
+poetry update
+
+# Exportar requirements.txt atualizado
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+
+# Verificar segurança
+poetry run task security
+
+# Executar testes
+poetry run task test
+
+# Script de atualização segura (se existir)
 ./scripts/update_production.sh
 ```
 
@@ -179,21 +254,30 @@ sudo crontab -l | grep certbot
 
 #### 1. Container não inicia
 ```bash
-# Verificar logs detalhados
-docker-compose logs --details api
+# Verificar logs detalhados (Docker Compose V2)
+docker compose logs --details api
 
 # Verificar configuração
-docker-compose config
+docker compose config
+
+# Verificar se requirements.txt existe
+ls -la fastapi/requirements.txt
+
+# Recriar requirements.txt se necessário
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
 ```
 
 #### 2. Nginx 502 Bad Gateway
 ```bash
 # Verificar se API está rodando
-docker-compose ps
-curl http://localhost:8000/health
+docker compose ps
+curl http://localhost:8000/api/health
 
 # Verificar configuração Nginx
-docker-compose exec nginx nginx -t
+docker compose exec nginx nginx -t
+
+# Verificar conectividade entre containers
+docker compose exec nginx curl http://api:8000/api/health
 ```
 
 #### 3. SSL não funciona
@@ -219,16 +303,20 @@ htop
 ### Comandos de Emergência
 
 ```bash
-# Parar tudo
-docker-compose down
+# Parar tudo (Docker Compose V2)
+docker compose down
 
 # Reset completo (CUIDADO: perde dados locais)
-docker-compose down -v
+docker compose down -v
 docker system prune -af
 
 # Restart específico
-docker-compose restart api
-docker-compose restart nginx
+docker compose restart api
+docker compose restart nginx
+
+# Rebuild forçado
+docker compose build --no-cache api
+docker compose up -d api
 ```
 
 ## 📈 Otimização de Performance
@@ -292,32 +380,88 @@ sudo apt install fail2ban
 
 ---
 
-## ✅ Checklist de Deploy
+## 🎯 Comandos Essenciais Poetry + Docker
+
+### Workflow Completo de Deploy
+```bash
+# 1. Preparar ambiente
+poetry install --only=main
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+
+# 2. Habilitar Docker Buildx Bake (RECOMENDADO)
+export COMPOSE_BAKE=true
+
+# 3. Build e deploy com performance otimizada
+docker compose build
+docker compose up -d
+
+# 4. Verificar
+docker compose ps
+curl https://seudominio.com/api/health
+
+# 5. Monitorar
+docker compose logs -f api
+```
+
+### Comandos de Manutenção
+```bash
+# Habilitar Buildx Bake para performance
+export COMPOSE_BAKE=true
+
+# Atualizar dependências
+poetry update
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+docker compose build api
+docker compose up -d api
+
+# Verificar segurança
+poetry run task security
+
+# Executar testes
+poetry run task test
+```
+
+## ✅ Checklist de Deploy Atualizado
 
 ### Pré-Deploy
-- [ ] VPS configurado com Docker
+- [ ] VPS com Python 3.12+ e Docker
+- [ ] Poetry instalado e configurado
 - [ ] Domínio apontando para VPS
 - [ ] Repositório clonado
-- [ ] .env configurado
+- [ ] .env configurado para produção
 
-### Deploy
-- [ ] docker-compose build executado
+### Preparação Poetry
+- [ ] `poetry install --only=main` executado
+- [ ] `poetry export` gerou requirements.txt
+- [ ] `poetry run task check` passou
+- [ ] Testes executados com sucesso
+
+### Deploy Docker
+- [ ] `docker compose build` executado
 - [ ] Serviços iniciados sem erro
 - [ ] SSL configurado via script
 - [ ] Health checks passando
 
-### Pós-Deploy
-- [ ] Testes de API funcionando
-- [ ] Logs sendo gerados
-- [ ] Monitoramento ativo
-- [ ] Backup configurado
-
 ### Validação Final
-- [ ] https://seudominio.com/health retorna 200
+- [ ] https://seudominio.com/api/health retorna 200
 - [ ] https://seudominio.com/docs acessível
-- [ ] Token extraction testado
+- [ ] https://seudominio.com/api/automations lista 4+ automações
+- [ ] Token extraction funcional (teste real)
 - [ ] SSL Grade A+ no SSL Labs
+- [ ] Logs sendo gerados corretamente
 
 ---
 
-*Guia criado em 24/06/2025 - Mesa Premium API v1.0*
+## 🚨 Notas Importantes
+
+**Poetry + Docker**: O Dockerfile ainda usa requirements.txt, então sempre execute `poetry export` antes de fazer build.
+
+**Docker Compose V2**: Use `docker compose` (sem hífen) em vez de `docker-compose`.
+
+**Docker Buildx Bake**: Para performance otimizada, sempre use `export COMPOSE_BAKE=true` antes de builds.
+
+**Hostinger MySQL**: Configuração já está no .env.production para usar banco externo.
+
+---
+
+*Guia atualizado em 26/06/2025 - MenuAutomacoes API v2.0 com Poetry*
