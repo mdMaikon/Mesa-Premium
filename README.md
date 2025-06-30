@@ -186,7 +186,7 @@ DATABASE_NAME=u272626296_automacoes
 
 # Hub XP API
 HUB_XP_API_KEY=sua_chave_hub_xp
-HUB_XP_STRUCTURED_API_KEY=4099b36f826749e1acab295989795688
+HUB_XP_STRUCTURED_API_KEY=sua_chave_estruturadas_hub_xp
 
 # Application
 ENVIRONMENT=production          # development, staging, production

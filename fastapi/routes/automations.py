@@ -52,6 +52,20 @@ async def list_automations():
                 "/api/fixed-income/categories",
             ],
         ),
+        AutomationInfo(
+            name="Structured Products Processing",
+            description="Fetch and process structured tickets from Hub XP",
+            status="active",
+            version="1.0.0",
+            endpoints=[
+                "/api/structured/process",
+                "/api/structured/process-sync",
+                "/api/structured/status",
+                "/api/structured/stats",
+                "/api/structured/data",
+                "/api/structured/categories",
+            ],
+        ),
     ]
 
     return automations
@@ -64,8 +78,8 @@ async def get_automation_stats() -> dict[str, Any]:
     """
     # This would be expanded with real statistics
     return {
-        "total_automations": 2,
-        "active_automations": 2,
+        "total_automations": 3,
+        "active_automations": 3,
         "total_executions_today": 0,  # Would come from database
         "success_rate": 0.0,  # Would be calculated from logs
         "last_execution": None,  # Would come from database

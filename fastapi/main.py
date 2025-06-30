@@ -20,6 +20,7 @@ app = FastAPI(
     title="MenuAutomacoes API",
     description="API for Hub XP token extraction and multi-automation platform",
     version="1.0.0",
+    openapi_version="3.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
