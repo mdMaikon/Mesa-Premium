@@ -1,0 +1,46 @@
+# Pre-commit hooks configuration
+repos:
+  # Ruff linter and formatter (substitui Black + Flake8)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.0
+    hooks:
+      # Linting
+      - id: ruff
+        args: [--fix]
+      # Formatting
+      - id: ruff-format
+
+  # Python security audit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+
+  # General pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: debug-statements
+      - id: check-docstring-first
+
+  # Git hooks
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.29.0
+    hooks:
+      - id: commitizen
+
+# Configuração global
+default_language_version:
+  python: python3.12
+
+# Executar em todos os arquivos na primeira instalação
+default_install_hook_types: [pre-commit, pre-push]

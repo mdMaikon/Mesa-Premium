@@ -1,5 +1,28 @@
-.env 
-__pycache__/ 
-*.pyc 
+# Environment files
+.env*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Logs
 *.log
+logs/
+
+# IDE
 .claude
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+setup_menu.bat
+user_config.json
+.check_history
