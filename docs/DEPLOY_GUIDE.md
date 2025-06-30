@@ -9,6 +9,7 @@
 - Python 3.12+
 - Docker + Docker Compose V2
 - Poetry para gerenciamento de dependências
+- MySQL 8.0+ instalado localmente no VPS
 
 ### 🌐 Domínio Configurado
 - Domínio apontando para IP do VPS
@@ -23,6 +24,12 @@ sudo apt update && sudo apt upgrade -y
 
 # Instalar Python 3.12+
 sudo apt install -y python3.12 python3.12-venv python3-pip curl git
+
+# Instalar MySQL Server 8.0
+sudo apt install -y mysql-server mysql-client
+
+# Configurar MySQL
+sudo mysql_secure_installation
 
 # Instalar Docker (método oficial)
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -47,7 +54,38 @@ source ~/.bashrc
 poetry --version
 ```
 
-### 3. Clonar e Configurar Projeto
+### 3. Configurar MySQL Database
+```bash
+# Acessar MySQL como root
+sudo mysql -u root -p
+
+# Criar database e usuário
+CREATE DATABASE mesa_premium_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'mesa_user'@'localhost' IDENTIFIED BY 'Blue@@10';
+GRANT ALL PRIVILEGES ON mesa_premium_db.* TO 'mesa_user'@'localhost';
+
+# Para acesso externo (opcional, para testes locais)
+CREATE USER 'mesa_user'@'%' IDENTIFIED BY 'Blue@@10';
+GRANT ALL PRIVILEGES ON mesa_premium_db.* TO 'mesa_user'@'%';
+FLUSH PRIVILEGES;
+EXIT;
+
+# Configurar MySQL para aceitar conexões externas (opcional)
+sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
+# Comentar linha: # bind-address = 127.0.0.1
+# Ou alterar para: bind-address = 0.0.0.0
+
+# Reiniciar MySQL
+sudo systemctl restart mysql
+
+# Configurar firewall para MySQL (opcional, para testes externos)
+sudo ufw allow 3306/tcp
+
+# Testar conexão local
+mysql -u mesa_user -p mesa_premium_db
+```
+
+### 4. Clonar e Configurar Projeto
 ```bash
 # Clonar repositório
 git clone https://github.com/seu-usuario/MenuAutomacoes.git
@@ -98,8 +136,8 @@ export COMPOSE_BAKE=true
 # Build das imagens com Docker Compose V2 + Buildx Bake
 docker compose build
 
-# Subir serviços (produção com Hostinger MySQL)
-docker compose up -d api redis nginx
+# Subir serviços (produção com MySQL local do VPS)
+docker compose -f docker-compose.prod.yml up -d
 
 # Verificar status dos containers
 docker compose ps

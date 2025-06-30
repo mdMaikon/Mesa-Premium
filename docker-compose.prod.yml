@@ -1,0 +1,58 @@
+# Docker Compose para Produção VPS (sem MySQL local)
+
+services:
+  # FastAPI Application
+  api:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: mesa_premium_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+    volumes:
+      - ./fastapi/logs:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - mesa_premium_network
+    expose:
+      - "8000"
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: mesa_premium_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - mesa_premium_network
+    command: redis-server --appendonly yes
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: mesa_premium_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites-available:/etc/nginx/sites-available:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - api
+    networks:
+      - mesa_premium_network
+
+networks:
+  mesa_premium_network:
+    driver: bridge
+
+volumes:
+  redis_data:
