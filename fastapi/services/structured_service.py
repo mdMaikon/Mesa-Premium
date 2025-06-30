@@ -666,7 +666,7 @@ class StructuredService:
             data_query = (  # nosec B608
                 "SELECT ticket_id, data_envio, cliente, ativo, comissao, estrutura, "
                 "quantidade, fixing, status, detalhes, operacao, aai_ordem, "
-                "data_coleta, created_at, updated_at FROM structured_data"
+                "data_coleta, created_at, updated_at FROM structured_data "
                 + where_clause
                 + " ORDER BY data_envio DESC, created_at DESC LIMIT %s OFFSET %s"
             )
