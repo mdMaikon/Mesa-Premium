@@ -8,7 +8,9 @@ import functools
 import json
 import os
 import platform
+import tempfile
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any
@@ -167,6 +169,16 @@ class WebDriverManager:
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--ignore-ssl-errors")
         options.add_argument("--ignore-certificate-errors-spki-list")
+
+        # Docker/Production specific options
+        temp_dir = tempfile.gettempdir()
+        unique_user_data_dir = os.path.join(
+            temp_dir, f"chrome_user_data_{uuid.uuid4().hex[:8]}"
+        )
+        options.add_argument(f"--user-data-dir={unique_user_data_dir}")
+        options.add_argument(
+            "--remote-debugging-port=0"
+        )  # Disable remote debugging conflicts
 
         # Performance optimizations
         options.add_argument("--disable-gpu")
