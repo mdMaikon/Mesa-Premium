@@ -441,9 +441,9 @@ class HubXPAuthenticator:
         logger.info("Clicking login button...")
         login_button.click()
 
-        # Wait longer for form submission and page load (especialmente em Docker)
+        # Wait for form submission and page load
         logger.info("Waiting for page to load after login...")
-        time.sleep(8)  # Aumentar de 5 para 8 segundos
+        time.sleep(3)  # Otimizado: reduzido de 8 para 3 segundos
 
     def _find_login_button(self):
         """Find login button using multiple selectors"""
