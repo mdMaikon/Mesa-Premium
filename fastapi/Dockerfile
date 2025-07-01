@@ -46,9 +46,19 @@ WORKDIR /app
 # Copiar código da aplicação
 COPY . .
 
-# Criar diretórios necessários
+# Criar diretórios necessários incluindo cache do Selenium
 RUN mkdir -p logs && \
-    chown -R appuser:appuser /app
+    mkdir -p /home/appuser/.cache/selenium && \
+    mkdir -p /tmp/chrome_cache && \
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /home/appuser && \
+    chmod -R 755 /home/appuser/.cache && \
+    chmod -R 777 /tmp
+
+# Configurar variáveis de ambiente para Selenium
+ENV HOME=/home/appuser
+ENV SELENIUM_CACHE_PATH=/home/appuser/.cache/selenium
+ENV TMPDIR=/tmp
 
 # Mudar para usuário não-root
 USER appuser
