@@ -8,6 +8,7 @@ import functools
 import json
 import os
 import platform
+import shutil
 import tempfile
 import time
 import uuid
@@ -170,15 +171,51 @@ class WebDriverManager:
         options.add_argument("--ignore-ssl-errors")
         options.add_argument("--ignore-certificate-errors-spki-list")
 
-        # Docker/Production specific options
-        temp_dir = tempfile.gettempdir()
-        unique_user_data_dir = os.path.join(
-            temp_dir, f"chrome_user_data_{uuid.uuid4().hex[:8]}"
+        # Docker/Production specific options - Multiple strategies to avoid conflicts
+        timestamp = int(time.time() * 1000)  # milliseconds timestamp
+        process_id = os.getpid()
+        unique_id = f"{timestamp}_{process_id}_{uuid.uuid4().hex[:8]}"
+
+        # Try multiple temp directory strategies  # nosec B108
+        temp_dirs = ["/tmp", tempfile.gettempdir(), "/var/tmp"]  # nosec B108
+        temp_dir = next(
+            (
+                d
+                for d in temp_dirs
+                if os.path.exists(d) and os.access(d, os.W_OK)
+            ),
+            tempfile.gettempdir(),  # Use tempfile as fallback instead of hardcoded
         )
+
+        unique_user_data_dir = os.path.join(
+            temp_dir, f"chrome_user_data_{unique_id}"
+        )
+
+        # Ensure directory doesn't exist and create it
+        if os.path.exists(unique_user_data_dir):
+            shutil.rmtree(unique_user_data_dir, ignore_errors=True)
+
         options.add_argument(f"--user-data-dir={unique_user_data_dir}")
         options.add_argument(
             "--remote-debugging-port=0"
         )  # Disable remote debugging conflicts
+
+        # Additional Docker-specific options to avoid conflicts
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-translate")
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument(
+            "--single-process"
+        )  # Use single process to avoid conflicts
+
+        # Cache and data directory options
+        options.add_argument("--disk-cache-size=0")
+        options.add_argument("--aggressive-cache-discard")
+        options.add_argument(f"--crash-dumps-dir={temp_dir}")
+        options.add_argument(
+            f"--user-data-dir={unique_user_data_dir}"
+        )  # Explicit override
 
         # Performance optimizations
         options.add_argument("--disable-gpu")
