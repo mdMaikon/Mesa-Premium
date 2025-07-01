@@ -195,6 +195,13 @@ class WebDriverManager:
             options.add_argument("--disable-background-networking")
             options.add_argument("--disable-sync")
             options.add_argument("--disk-cache-size=0")
+            options.add_argument("--disable-dev-tools")  # Desabilita DevTools
+            options.add_argument("--disable-logging")
+            options.add_argument("--disable-background-timer-throttling")
+            options.add_argument("--disable-renderer-backgrounding")
+            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--force-gpu-mem-available-mb=1024")
+            options.add_argument("--max-old-space-size=4096")
         else:
             # Desenvolvimento/local - usar configuração padrão que funciona
             temp_dir = tempfile.gettempdir()
@@ -452,7 +459,7 @@ class HubXPAuthenticator:
 
     def _handle_mfa_authentication(self, mfa_code: str | None) -> bool:
         """
-        Handle MFA authentication
+        Handle MFA authentication with connection stability
 
         Args:
             mfa_code: 6-digit MFA code
@@ -468,8 +475,18 @@ class HubXPAuthenticator:
             )
 
         try:
-            # Find MFA fields
-            mfa_fields = WebDriverWait(self.driver, 30).until(
+            # Verificar se a conexão está ativa antes de continuar
+            try:
+                current_url = self.driver.current_url
+                logger.info(f"Current URL before MFA: {current_url[:50]}...")
+            except Exception as e:
+                logger.error(f"Driver connection lost before MFA: {e}")
+                raise HubXPCustomExceptions.MFAError(
+                    "Browser connection lost"
+                ) from e
+
+            # Find MFA fields com timeout reduzido para detectar problemas mais cedo
+            mfa_fields = WebDriverWait(self.driver, 20).until(
                 EC.presence_of_all_elements_located(
                     (
                         By.CSS_SELECTOR,
@@ -487,14 +504,14 @@ class HubXPAuthenticator:
                     f"MFA code must be 6 digits, got {len(mfa_code)}"
                 )
 
-            # Fill MFA fields
-            self._fill_mfa_fields(mfa_fields, mfa_code)
+            # Fill MFA fields with connection checks
+            self._fill_mfa_fields_safe(mfa_fields, mfa_code)
 
-            # Submit MFA
-            self._submit_mfa_form()
+            # Submit MFA with connection check
+            self._submit_mfa_form_safe()
 
-            # Wait for authentication success
-            WebDriverWait(self.driver, 30).until(
+            # Wait for authentication success with shorter timeout
+            WebDriverWait(self.driver, 20).until(
                 EC.presence_of_element_located((By.TAG_NAME, "header"))
             )
 
@@ -503,37 +520,87 @@ class HubXPAuthenticator:
         except TimeoutException:
             logger.error("MFA fields not found or timeout during MFA")
             return False
+        except Exception as e:
+            logger.error(f"MFA authentication error: {e}")
+            return False
 
-    def _fill_mfa_fields(self, mfa_fields: list, mfa_code: str) -> None:
-        """Fill MFA fields with code digits"""
+    def _fill_mfa_fields_safe(self, mfa_fields: list, mfa_code: str) -> None:
+        """Fill MFA fields with code digits safely"""
         logger.info(f"Entering MFA code in {len(mfa_fields)} fields...")
 
         for i, field in enumerate(mfa_fields):
             if i < len(mfa_code):
-                digit = mfa_code[i]
-                logger.info(f"DEBUG: Filling field {i} with digit '[MASKED]'")
-                field.clear()
-                field.send_keys(digit)
+                try:
+                    # Verificar se o campo ainda está disponível
+                    if not field.is_enabled():
+                        logger.warning(f"Field {i} is not enabled, skipping")
+                        continue
 
-                # Verify field was filled
-                _filled_value = field.get_attribute("value")
-                logger.info(
-                    f"DEBUG: Field {i} value after filling: '[MASKED]'"
+                    digit = mfa_code[i]
+                    logger.info(
+                        f"DEBUG: Filling field {i} with digit '[MASKED]'"
+                    )
+                    field.clear()
+                    field.send_keys(digit)
+
+                    # Pequena pausa entre campos para estabilidade
+                    time.sleep(0.2)
+
+                except Exception as e:
+                    logger.error(f"Error filling MFA field {i}: {e}")
+                    # Continue com os outros campos mesmo se um falhar
+                    continue
+
+    def _fill_mfa_fields(self, mfa_fields: list, mfa_code: str) -> None:
+        """Fill MFA fields with code digits (legacy method)"""
+        return self._fill_mfa_fields_safe(mfa_fields, mfa_code)
+
+    def _submit_mfa_form_safe(self) -> None:
+        """Submit MFA form safely with connection checks"""
+        try:
+            # Verificar conexão antes de submeter
+            try:
+                _ = self.driver.page_source[:100]  # Connection check
+                logger.info("Connection check passed before MFA submit")
+            except Exception as e:
+                logger.error(f"Connection lost before MFA submit: {e}")
+                raise HubXPCustomExceptions.MFAError(
+                    "Browser disconnected before submit"
+                ) from e
+
+            # Tentar encontrar botão de submit
+            try:
+                mfa_submit = self.driver.find_element(
+                    By.CSS_SELECTOR,
+                    "button[aria-label='Confirmar e acessar conta']",
                 )
+                logger.info("Found primary MFA submit button")
+            except Exception:
+                try:
+                    mfa_submit = self.driver.find_element(
+                        By.CSS_SELECTOR, "soma-button[type='submit']"
+                    )
+                    logger.info("Found secondary MFA submit button")
+                except Exception as e:
+                    logger.error(f"No MFA submit button found: {e}")
+                    raise HubXPCustomExceptions.MFAError(
+                        "Submit button not found"
+                    ) from e
+
+            # Click com verificação
+            mfa_submit.click()
+            logger.info("MFA form submitted successfully")
+
+            # Pequena pausa após submit
+            time.sleep(1)
+
+        except Exception as e:
+            logger.error(f"Error submitting MFA form: {e}")
+            raise
 
     def _submit_mfa_form(self) -> None:
-        """Submit MFA form"""
-        try:
-            mfa_submit = self.driver.find_element(
-                By.CSS_SELECTOR,
-                "button[aria-label='Confirmar e acessar conta']",
-            )
-        except Exception:
-            mfa_submit = self.driver.find_element(
-                By.CSS_SELECTOR, "soma-button[type='submit']"
-            )
-
-        mfa_submit.click()
+        """Submit MFA form (legacy method)"""
+        return self._submit_mfa_form_safe()
 
     def _log_debugging_info(self) -> None:
         """Log safe debugging information"""
