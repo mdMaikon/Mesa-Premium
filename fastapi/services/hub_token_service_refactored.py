@@ -171,51 +171,38 @@ class WebDriverManager:
         options.add_argument("--ignore-ssl-errors")
         options.add_argument("--ignore-certificate-errors-spki-list")
 
-        # Docker/Production specific options - Multiple strategies to avoid conflicts
-        timestamp = int(time.time() * 1000)  # milliseconds timestamp
-        process_id = os.getpid()
-        unique_id = f"{timestamp}_{process_id}_{uuid.uuid4().hex[:8]}"
+        # Docker/Production specific options - Environment-aware approach
+        if (
+            self.environment in ["linux"]
+            and os.getenv("ENVIRONMENT") == "production"
+        ):
+            # Docker production mode - approach radical para resolver conflitos persistentes
+            timestamp = int(time.time() * 1000)
+            process_id = os.getpid()
+            unique_id = f"{timestamp}_{process_id}_{uuid.uuid4().hex[:8]}"
 
-        # Try multiple temp directory strategies  # nosec B108
-        temp_dirs = ["/tmp", tempfile.gettempdir(), "/var/tmp"]  # nosec B108
-        temp_dir = next(
-            (
-                d
-                for d in temp_dirs
-                if os.path.exists(d) and os.access(d, os.W_OK)
-            ),
-            tempfile.gettempdir(),  # Use tempfile as fallback instead of hardcoded
-        )
+            # Usar /tmp que sabemos que funciona no container
+            user_data_dir = f"/tmp/chrome_prod_{unique_id}"  # nosec B108
 
-        unique_user_data_dir = os.path.join(
-            temp_dir, f"chrome_user_data_{unique_id}"
-        )
+            # Limpeza forçada se existir
+            if os.path.exists(user_data_dir):
+                shutil.rmtree(user_data_dir, ignore_errors=True)
 
-        # Ensure directory doesn't exist and create it
-        if os.path.exists(unique_user_data_dir):
-            shutil.rmtree(unique_user_data_dir, ignore_errors=True)
-
-        options.add_argument(f"--user-data-dir={unique_user_data_dir}")
-        options.add_argument(
-            "--remote-debugging-port=0"
-        )  # Disable remote debugging conflicts
-
-        # Additional Docker-specific options to avoid conflicts
-        options.add_argument("--disable-background-networking")
-        options.add_argument("--disable-sync")
-        options.add_argument("--disable-translate")
-        options.add_argument("--disable-ipc-flooding-protection")
-        options.add_argument(
-            "--single-process"
-        )  # Use single process to avoid conflicts
-
-        # Cache and data directory options
-        options.add_argument("--disk-cache-size=0")
-        options.add_argument("--aggressive-cache-discard")
-        options.add_argument(f"--crash-dumps-dir={temp_dir}")
-        options.add_argument(
-            f"--user-data-dir={unique_user_data_dir}"
-        )  # Explicit override
+            options.add_argument(f"--user-data-dir={user_data_dir}")
+            options.add_argument("--remote-debugging-port=0")
+            options.add_argument("--single-process")  # Crítico para Docker
+            options.add_argument("--no-zygote")  # Força single process
+            options.add_argument("--disable-background-networking")
+            options.add_argument("--disable-sync")
+            options.add_argument("--disk-cache-size=0")
+        else:
+            # Desenvolvimento/local - usar configuração padrão que funciona
+            temp_dir = tempfile.gettempdir()
+            unique_user_data_dir = os.path.join(
+                temp_dir, f"chrome_user_data_{uuid.uuid4().hex[:8]}"
+            )
+            options.add_argument(f"--user-data-dir={unique_user_data_dir}")
+            options.add_argument("--remote-debugging-port=0")
 
         # Performance optimizations
         options.add_argument("--disable-gpu")
