@@ -190,8 +190,11 @@ class WebDriverManager:
 
             options.add_argument(f"--user-data-dir={user_data_dir}")
             options.add_argument("--remote-debugging-port=0")
-            options.add_argument("--single-process")  # Crítico para Docker
-            options.add_argument("--no-zygote")  # Força single process
+            # REMOVER --single-process e --no-zygote que causam crashes
+            # options.add_argument("--single-process")  # Pode causar instabilidade
+            # options.add_argument("--no-zygote")  # Pode causar crashes
+
+            # Configuração mais estável para Docker
             options.add_argument("--disable-background-networking")
             options.add_argument("--disable-sync")
             options.add_argument("--disk-cache-size=0")
@@ -200,8 +203,16 @@ class WebDriverManager:
             options.add_argument("--disable-background-timer-throttling")
             options.add_argument("--disable-renderer-backgrounding")
             options.add_argument("--disable-backgrounding-occluded-windows")
-            options.add_argument("--force-gpu-mem-available-mb=1024")
-            options.add_argument("--max-old-space-size=4096")
+            options.add_argument("--disable-features=VizDisplayCompositor")
+            options.add_argument("--disable-features=AudioServiceOutOfProcess")
+            options.add_argument(
+                "--force-gpu-mem-available-mb=512"
+            )  # Reduzir uso de memória
+            options.add_argument(
+                "--max-old-space-size=2048"
+            )  # Reduzir uso de memória
+            options.add_argument("--memory-pressure-off")
+            options.add_argument("--disable-ipc-flooding-protection")
         else:
             # Desenvolvimento/local - usar configuração padrão que funciona
             temp_dir = tempfile.gettempdir()
@@ -430,8 +441,9 @@ class HubXPAuthenticator:
         logger.info("Clicking login button...")
         login_button.click()
 
-        # Wait for form submission
-        time.sleep(5)
+        # Wait longer for form submission and page load (especialmente em Docker)
+        logger.info("Waiting for page to load after login...")
+        time.sleep(8)  # Aumentar de 5 para 8 segundos
 
     def _find_login_button(self):
         """Find login button using multiple selectors"""
@@ -479,6 +491,14 @@ class HubXPAuthenticator:
             try:
                 current_url = self.driver.current_url
                 logger.info(f"Current URL before MFA: {current_url[:50]}...")
+
+                # Verificação adicional de estabilidade
+                page_title = self.driver.title
+                logger.info(f"Page title before MFA: {page_title}")
+
+                # Pequena pausa para estabilidade
+                time.sleep(2)
+
             except Exception as e:
                 logger.error(f"Driver connection lost before MFA: {e}")
                 raise HubXPCustomExceptions.MFAError(
