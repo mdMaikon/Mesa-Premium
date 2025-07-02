@@ -1,6 +1,6 @@
 # MenuAutomacoes - Hub XP Automation API
 
-> Sistema enterprise-grade para automação Hub XP com FastAPI, Docker e APIs REST robustas.
+> Sistema de automação com FastAPI, Docker e APIs REST.
 
 ## 🚀 Quick Start
 
@@ -36,7 +36,7 @@ poetry run task security     # Auditoria segurança
 
 ```
 ┌─────────────┐    HTTP/HTTPS     ┌─────────────┐
-│ Web Client  │ ─────────────────→ │ Nginx Proxy │
+│ Web Client  │ ────────────────→ │ Nginx Proxy │
 └─────────────┘                   └─────────────┘
                                          │
                           ┌──────────────┼──────────────┐
@@ -97,10 +97,10 @@ curl "http://localhost/api/structured/data?cliente=12345&ativo=PETR4&limit=50"
 
 ```bash
 # Database Production
-DATABASE_HOST=srv719.hstgr.io
-DATABASE_USER=u272626296_mesapremium
+DATABASE_HOST=0.0.0.0
+DATABASE_USER=user
 DATABASE_PASSWORD=sua_senha_aqui
-DATABASE_NAME=u272626296_automacoes
+DATABASE_NAME=db_name
 
 # Hub XP APIs
 HUB_XP_API_KEY=sua_chave_hub_xp
