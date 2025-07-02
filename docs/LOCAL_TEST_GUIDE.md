@@ -254,11 +254,11 @@ DATABASE_PASSWORD=secure_password
 DATABASE_NAME=mesa_premium_db
 
 # OPÇÃO B: MySQL Hostinger (Produção)
-DATABASE_HOST=srv719.hstgr.io
+DATABASE_HOST=your-mysql-server.com
 DATABASE_PORT=3306
-DATABASE_USER=u272626296_mesapremium
-DATABASE_PASSWORD=Blue@@10
-DATABASE_NAME=u272626296_automacoes
+DATABASE_USER=your_database_user
+DATABASE_PASSWORD=YOUR_SECURE_PASSWORD_HERE
+DATABASE_NAME=your_database_name
 
 # Application
 ENVIRONMENT=development

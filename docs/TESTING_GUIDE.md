@@ -45,10 +45,10 @@ nano .env  # Edite com suas credenciais MySQL
 
 **Conteúdo necessário no `.env`:**
 ```env
-DB_HOST=srv719.hstgr.io
-DB_NAME=u272626296_automacoes
-DB_USER=u272626296_mesapremium
-DB_PASSWORD=sua_senha_mysql_aqui
+DB_HOST=your-mysql-server.com
+DB_NAME=your_database_name
+DB_USER=your_database_user
+DB_PASSWORD=YOUR_SECURE_PASSWORD_HERE
 ```
 
 ### 3. Dependências do Sistema
@@ -680,7 +680,7 @@ export PYTHONPATH=$PYTHONPATH:/home/maikonsilva/MenuAutomacoes/fastapi
 ### Erro: Database connection
 ```bash
 # Testar conexão MySQL direta
-mysql -h srv719.hstgr.io -u u272626296_mesapremium -p u272626296_automacoes
+mysql -h your-mysql-server.com -u your_database_user -p your_database_name
 
 # Verificar firewall
 ping srv719.hstgr.io

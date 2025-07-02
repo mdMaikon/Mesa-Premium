@@ -61,11 +61,11 @@ sudo mysql -u root -p
 
 # Criar database e usuário
 CREATE DATABASE mesa_premium_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'mesa_user'@'localhost' IDENTIFIED BY 'Blue@@10';
+CREATE USER 'mesa_user'@'localhost' IDENTIFIED BY 'YOUR_SECURE_PASSWORD_HERE';
 GRANT ALL PRIVILEGES ON mesa_premium_db.* TO 'mesa_user'@'localhost';
 
 # Para acesso externo (opcional, para testes locais)
-CREATE USER 'mesa_user'@'%' IDENTIFIED BY 'Blue@@10';
+CREATE USER 'mesa_user'@'%' IDENTIFIED BY 'YOUR_SECURE_PASSWORD_HERE';
 GRANT ALL PRIVILEGES ON mesa_premium_db.* TO 'mesa_user'@'%';
 FLUSH PRIVILEGES;
 EXIT;

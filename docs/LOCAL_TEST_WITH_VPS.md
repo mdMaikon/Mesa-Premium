@@ -6,7 +6,7 @@ Este guia explica como testar a aplicação na sua máquina local conectando ao 
 
 - Python 3.12+ instalado localmente
 - Poetry instalado
-- Acesso de rede ao VPS (IP: 31.97.151.142)
+- Acesso de rede ao VPS (IP: YOUR_VPS_IP_ADDRESS)
 - MySQL do VPS configurado para aceitar conexões externas
 
 ## 🔧 Configuração Local
@@ -36,23 +36,23 @@ cat .env
 O arquivo `.env` deve conter:
 ```env
 # Database Configuration (VPS MySQL External Access)
-DB_HOST=31.97.151.142
+DB_HOST=YOUR_VPS_IP_ADDRESS
 DB_PORT=3306
 DB_NAME=mesa_premium_db
 DB_USER=mesa_user
-DB_PASSWORD=Blue@@10
+DB_PASSWORD=YOUR_SECURE_PASSWORD_HERE
 ```
 
 ### 3. Testar Conexão com Banco
 ```bash
 # Testar conectividade com o VPS
-ping 31.97.151.142
+ping YOUR_VPS_IP_ADDRESS
 
 # Testar porta MySQL (se telnet disponível)
-telnet 31.97.151.142 3306
+telnet YOUR_VPS_IP_ADDRESS 3306
 
 # Ou usar nc (netcat)
-nc -zv 31.97.151.142 3306
+nc -zv YOUR_VPS_IP_ADDRESS 3306
 ```
 
 ### 4. Executar Aplicação Local
@@ -83,7 +83,7 @@ Para permitir conexões externas ao MySQL (necessário para teste local):
 ### 1. Configurar MySQL no VPS
 ```bash
 # SSH no VPS
-ssh root@31.97.151.142
+ssh root@YOUR_VPS_IP_ADDRESS
 
 # Editar configuração MySQL
 sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
@@ -134,7 +134,7 @@ Permitir acesso externo ao MySQL pode ser um risco de segurança. Considere:
 ### 🔐 Alternativa Segura: SSH Tunnel
 ```bash
 # Criar túnel SSH (mais seguro)
-ssh -L 3306:localhost:3306 root@31.97.151.142
+ssh -L 3306:localhost:3306 root@YOUR_VPS_IP_ADDRESS
 
 # Em outro terminal, usar localhost na aplicação
 # DB_HOST=localhost (no .env)
@@ -145,8 +145,8 @@ ssh -L 3306:localhost:3306 root@31.97.151.142
 ### Erro: "Can't connect to MySQL server"
 ```bash
 # 1. Verificar conectividade
-ping 31.97.151.142
-nc -zv 31.97.151.142 3306
+ping YOUR_VPS_IP_ADDRESS
+nc -zv YOUR_VPS_IP_ADDRESS 3306
 
 # 2. Verificar firewall no VPS
 sudo ufw status
@@ -171,7 +171,7 @@ SHOW GRANTS FOR 'mesa_user'@'%';
 # Recriar usuário com acesso externo no VPS
 sudo mysql -u root -p
 DROP USER 'mesa_user'@'%';
-CREATE USER 'mesa_user'@'%' IDENTIFIED BY 'Blue@@10';
+CREATE USER 'mesa_user'@'%' IDENTIFIED BY 'YOUR_SECURE_PASSWORD_HERE';
 GRANT ALL PRIVILEGES ON mesa_premium_db.* TO 'mesa_user'@'%';
 FLUSH PRIVILEGES;
 ```
@@ -211,11 +211,11 @@ poetry install
 cp .env.vps-external .env
 
 # 2. Configurar VPS (uma vez só)
-ssh root@31.97.151.142
+ssh root@YOUR_VPS_IP_ADDRESS
 # ... configurar MySQL para acesso externo
 
 # 3. Testar conectividade
-nc -zv 31.97.151.142 3306
+nc -zv YOUR_VPS_IP_ADDRESS 3306
 
 # 4. Executar aplicação
 poetry run task dev
