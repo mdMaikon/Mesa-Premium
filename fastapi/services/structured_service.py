@@ -11,10 +11,18 @@ from typing import Any
 import httpx
 from database.connection import execute_query, get_database_connection
 from dotenv import load_dotenv
+from utils.crypto_utils import (
+    CryptoError,
+    mask_structured_data,
+    prepare_structured_for_storage,
+    prepare_structured_from_storage,
+    validate_crypto_environment,
+)
 from utils.log_sanitizer import get_sanitized_logger
 
 import mysql.connector
 
+from .hub_token_service_refactored import TokenRepository
 from .structured_exceptions import (
     ApiRequestError,
     DatabaseOperationError,
@@ -34,35 +42,46 @@ class StructuredService:
     def __init__(self):
         self.token: str | None = None
 
-    async def get_valid_token(self) -> str | None:
-        """Get a valid token from hub_tokens table"""
+        # Validate cryptographic environment
+        if not validate_crypto_environment():
+            logger.warning(
+                "Cryptographic environment not properly configured - some features may not work"
+            )
+            self.crypto_enabled = False
+        else:
+            logger.info("Cryptographic environment validated successfully")
+            self.crypto_enabled = True
+
+    async def get_valid_token(self, user_login: str = None) -> str | None:
+        """Get a valid token from hub_tokens table with decryption support"""
         try:
-            query = """
-            SELECT token, expires_at
-            FROM hub_tokens
-            WHERE expires_at > NOW()
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
+            # If user_login is provided, get token for specific user
+            if user_login:
+                self.token = TokenRepository.get_valid_token(user_login)
+                if self.token:
+                    logger.info("Valid token retrieved for user")
+                    return self.token
+                else:
+                    logger.error("No valid token found for specified user")
+                    return None
 
-            result = execute_query(query, fetch=True)
+            # Fallback: try to get any valid token from any user
+            logger.info(
+                "No user_login provided, attempting to find any valid token..."
+            )
+            token_result = TokenRepository.get_any_valid_token()
 
-            if not result:
-                logger.error("No valid token found in database")
+            if token_result:
+                user_login_found, token = token_result
+                self.token = token
+                logger.info(
+                    f"Valid token found for user: {user_login_found[:3]}***{user_login_found[-3:]}"
+                )
+                return self.token
+            else:
+                logger.warning("No valid tokens found in database")
                 return None
 
-            token_data = result[0]
-            self.token = token_data["token"]
-            logger.info(
-                f"Valid token retrieved, expires at: {token_data['expires_at']}"
-            )
-            return self.token
-
-        except mysql.connector.Error as e:
-            logger.error(f"Database error retrieving token: {e}")
-            raise TokenRetrievalError(
-                f"Failed to retrieve token from database: {e}"
-            ) from e
         except Exception as e:
             logger.error(f"Unexpected error retrieving token: {e}")
             raise TokenRetrievalError(
@@ -290,42 +309,43 @@ class StructuredService:
         return dados_tratados
 
     async def create_structured_table(self) -> bool:
-        """Create structured_data table if it doesn't exist"""
+        """Create structured_data table with encryption support if it doesn't exist"""
         try:
             with get_database_connection() as connection:
                 cursor = connection.cursor()
 
+                # Create table with crypto fields - compatible with both encrypted and non-encrypted data
                 create_table_query = """
                 CREATE TABLE IF NOT EXISTS structured_data (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     data_coleta DATETIME NOT NULL,
-                    ticket_id VARCHAR(255) NOT NULL UNIQUE,
+                    ticket_id TEXT,
+                    ticket_id_hash VARCHAR(64),
                     data_envio DATETIME,
-                    cliente INT,
-                    ativo VARCHAR(255),
-                    comissao DECIMAL(15,4),
-                    estrutura VARCHAR(255),
+                    cliente TEXT,
+                    ativo TEXT,
+                    comissao TEXT,
+                    estrutura TEXT,
                     quantidade INT,
                     fixing DATETIME,
                     status VARCHAR(100),
                     detalhes TEXT,
                     operacao VARCHAR(100),
-                    aai_ordem VARCHAR(100),
+                    aai_ordem TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
                     INDEX idx_data_coleta (data_coleta),
-                    INDEX idx_ticket_id (ticket_id),
-                    INDEX idx_cliente (cliente),
-                    INDEX idx_ativo (ativo),
+                    INDEX idx_ticket_id_hash (ticket_id_hash),
                     INDEX idx_status (status),
-                    INDEX idx_data_envio (data_envio)
+                    INDEX idx_data_envio (data_envio),
+                    UNIQUE KEY unique_ticket_hash (ticket_id_hash)
                 )
                 """
 
                 cursor.execute(create_table_query)
                 logger.info(
-                    "structured_data table created/verified successfully"
+                    "structured_data table created/verified successfully with crypto support"
                 )
                 cursor.close()
 
@@ -341,9 +361,18 @@ class StructuredService:
         self, processed_data: list[dict]
     ) -> dict[str, int]:
         """
-        Insert new records or update existing ones based on ticket_id and commission changes
+        Insert new records or update existing ones based on ticket_id and commission changes.
+        Uses encryption for sensitive fields and hash for ticket_id lookups.
         Returns count of new vs updated records
         """
+        if not self.crypto_enabled:
+            logger.error(
+                "Crypto environment not available - cannot process structured data"
+            )
+            raise DatabaseOperationError(
+                "Cryptographic environment not configured"
+            )
+
         try:
             with get_database_connection() as connection:
                 cursor = connection.cursor()
@@ -353,110 +382,155 @@ class StructuredService:
                 data_coleta = datetime.now()
 
                 for record in processed_data:
-                    # Check if record exists and get current commission and status
-                    check_query = """
-                    SELECT id, comissao, status FROM structured_data
-                    WHERE ticket_id = %s
-                    """
-                    cursor.execute(check_query, (record["ticket_id"],))
-                    existing = cursor.fetchone()
-
-                    if existing:
-                        # Check if commission or status changed
-                        existing_commission = (
-                            existing[1] if existing[1] else Decimal("0.0")
+                    try:
+                        # Prepare encrypted data
+                        encrypted_record = prepare_structured_for_storage(
+                            record
                         )
-                        new_commission = (
-                            record["comissao"]
-                            if record["comissao"]
-                            else Decimal("0.0")
-                        )
+                        ticket_id_hash = encrypted_record["ticket_id_hash"]
 
-                        existing_status = existing[2] if existing[2] else ""
-                        new_status = (
-                            record["status"] if record["status"] else ""
-                        )
+                        # Check if record exists using hash lookup
+                        check_query = """
+                        SELECT id, comissao, status FROM structured_data
+                        WHERE ticket_id_hash = %s
+                        """
+                        cursor.execute(check_query, (ticket_id_hash,))
+                        existing = cursor.fetchone()
 
-                        if (
-                            existing_commission != new_commission
-                            or existing_status != new_status
-                        ):
-                            # Update existing record
-                            update_query = """
-                            UPDATE structured_data SET
-                                data_coleta = %s,
-                                data_envio = %s,
-                                cliente = %s,
-                                ativo = %s,
-                                comissao = %s,
-                                estrutura = %s,
-                                quantidade = %s,
-                                fixing = %s,
-                                status = %s,
-                                detalhes = %s,
-                                operacao = %s,
-                                aai_ordem = %s,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE ticket_id = %s
+                        if existing:
+                            # For existing records, need to decrypt stored commission for comparison
+                            try:
+                                existing_commission_str = (
+                                    existing[1] if existing[1] else "0.0"
+                                )
+                                # Try to decrypt if it looks encrypted, otherwise use as-is
+                                if (
+                                    len(existing_commission_str) > 20
+                                ):  # Likely encrypted
+                                    from utils.crypto_utils import (
+                                        decrypt_structured_data,
+                                    )
+
+                                    existing_commission = Decimal(
+                                        decrypt_structured_data(
+                                            existing_commission_str
+                                        )
+                                    )
+                                else:
+                                    existing_commission = Decimal(
+                                        existing_commission_str
+                                    )
+                            except (CryptoError, ValueError):
+                                existing_commission = Decimal("0.0")
+
+                            new_commission = (
+                                record["comissao"]
+                                if record["comissao"]
+                                else Decimal("0.0")
+                            )
+
+                            existing_status = (
+                                existing[2] if existing[2] else ""
+                            )
+                            new_status = (
+                                record["status"] if record["status"] else ""
+                            )
+
+                            if (
+                                existing_commission != new_commission
+                                or existing_status != new_status
+                            ):
+                                # Update existing record with encrypted data
+                                update_query = """
+                                UPDATE structured_data SET
+                                    data_coleta = %s,
+                                    ticket_id = %s,
+                                    data_envio = %s,
+                                    cliente = %s,
+                                    ativo = %s,
+                                    comissao = %s,
+                                    estrutura = %s,
+                                    quantidade = %s,
+                                    fixing = %s,
+                                    status = %s,
+                                    detalhes = %s,
+                                    operacao = %s,
+                                    aai_ordem = %s,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE ticket_id_hash = %s
+                                """
+
+                                update_values = (
+                                    data_coleta,
+                                    encrypted_record["ticket_id"],
+                                    record["data_envio"],
+                                    encrypted_record["cliente"],
+                                    encrypted_record["ativo"],
+                                    encrypted_record["comissao"],
+                                    encrypted_record["estrutura"],
+                                    record["quantidade"],
+                                    record["fixing"],
+                                    record["status"],
+                                    record["detalhes"],
+                                    record["operacao"],
+                                    encrypted_record["aai_ordem"],
+                                    ticket_id_hash,
+                                )
+
+                                cursor.execute(update_query, update_values)
+                                updated_records += 1
+
+                                # Log what changed (with masked data)
+                                changes = []
+                                if existing_commission != new_commission:
+                                    changes.append("commission")
+                                if existing_status != new_status:
+                                    changes.append("status")
+
+                                masked_record = mask_structured_data(record)
+                                logger.debug(
+                                    f"Updated ticket {masked_record['ticket_id']} - {', '.join(changes)} changed"
+                                )
+
+                        else:
+                            # Insert new record with encrypted data
+                            insert_query = """
+                            INSERT INTO structured_data
+                            (data_coleta, ticket_id, ticket_id_hash, data_envio, cliente, ativo, comissao,
+                             estrutura, quantidade, fixing, status, detalhes, operacao, aai_ordem)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             """
 
-                            update_values = (
+                            insert_values = (
                                 data_coleta,
+                                encrypted_record["ticket_id"],
+                                ticket_id_hash,
                                 record["data_envio"],
-                                record["cliente"],
-                                record["ativo"],
-                                record["comissao"],
-                                record["estrutura"],
+                                encrypted_record["cliente"],
+                                encrypted_record["ativo"],
+                                encrypted_record["comissao"],
+                                encrypted_record["estrutura"],
                                 record["quantidade"],
                                 record["fixing"],
                                 record["status"],
                                 record["detalhes"],
                                 record["operacao"],
-                                record["aai_ordem"],
-                                record["ticket_id"],
+                                encrypted_record["aai_ordem"],
                             )
 
-                            cursor.execute(update_query, update_values)
-                            updated_records += 1
+                            cursor.execute(insert_query, insert_values)
+                            new_records += 1
 
-                            # Log what changed
-                            changes = []
-                            if existing_commission != new_commission:
-                                changes.append("commission")
-                            if existing_status != new_status:
-                                changes.append("status")
-
-                            logger.debug(
-                                f"Updated ticket {record['ticket_id']} - {', '.join(changes)} changed"
-                            )
-
-                    else:
-                        # Insert new record
-                        insert_query = """
-                        INSERT INTO structured_data
-                        (data_coleta, ticket_id, data_envio, cliente, ativo, comissao,
-                         estrutura, quantidade, fixing, status, detalhes, operacao, aai_ordem)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """
-
-                        insert_values = (
-                            data_coleta,
-                            record["ticket_id"],
-                            record["data_envio"],
-                            record["cliente"],
-                            record["ativo"],
-                            record["comissao"],
-                            record["estrutura"],
-                            record["quantidade"],
-                            record["fixing"],
-                            record["status"],
-                            record["detalhes"],
-                            record["operacao"],
-                            record["aai_ordem"],
+                    except CryptoError as e:
+                        logger.error(
+                            f"Encryption error for ticket {record.get('ticket_id', 'unknown')}: {e}"
                         )
-
-                        cursor.execute(insert_query, insert_values)
-                        new_records += 1
+                        continue
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing ticket {record.get('ticket_id', 'unknown')}: {e}"
+                        )
+                        continue
 
                 connection.commit()
                 logger.info(
@@ -540,14 +614,12 @@ class StructuredService:
             }
 
     async def get_processing_stats(self) -> dict[str, Any]:
-        """Get processing statistics"""
+        """Get processing statistics - adapted for encrypted data"""
         try:
+            # Basic stats that don't require decryption
             query = """
             SELECT
                 COUNT(*) as total_records,
-                COUNT(DISTINCT cliente) as unique_clients,
-                COUNT(DISTINCT ativo) as unique_assets,
-                SUM(comissao) as total_commission,
                 MAX(data_coleta) as last_update,
                 MIN(data_envio) as earliest_ticket,
                 MAX(data_envio) as latest_ticket
@@ -561,7 +633,7 @@ class StructuredService:
 
             stats = result[0]
 
-            # Get status breakdown
+            # Get status breakdown (status is not encrypted)
             status_query = """
             SELECT status, COUNT(*) as count
             FROM structured_data
@@ -576,13 +648,16 @@ class StructuredService:
                 else {}
             )
 
+            # Note: unique_clients, unique_assets, and total_commission are not calculated
+            # because they require decryption of all records, which is expensive
+            # For these metrics, consider implementing cached/aggregated values or
+            # calculate them during data processing
+
             return {
                 "total_records": stats["total_records"],
-                "unique_clients": stats["unique_clients"],
-                "unique_assets": stats["unique_assets"],
-                "total_commission": float(stats["total_commission"])
-                if stats["total_commission"]
-                else 0.0,
+                "unique_clients": "N/A (encrypted)",
+                "unique_assets": "N/A (encrypted)",
+                "total_commission": "N/A (encrypted)",
                 "last_update": stats["last_update"].isoformat()
                 if stats["last_update"]
                 else None,
@@ -593,6 +668,7 @@ class StructuredService:
                 if stats["latest_ticket"]
                 else None,
                 "status_breakdown": status_breakdown,
+                "note": "Some statistics are not available due to encryption. Consider implementing cached aggregation for performance.",
             }
 
         except Exception as e:
@@ -621,19 +697,30 @@ class StructuredService:
         data_inicio: str | None = None,
         data_fim: str | None = None,
     ) -> dict[str, Any]:
-        """Get structured data with filtering and pagination"""
+        """Get structured data with filtering and pagination - with decryption support"""
+        if not self.crypto_enabled:
+            logger.warning(
+                "Crypto environment not available - returning encrypted data"
+            )
+
         try:
             # Build WHERE conditions
             where_conditions = []
             params = []
 
+            # Note: filtering by encrypted fields (cliente, ativo) is complex
+            # For now, we'll apply filters after decryption or skip them with a warning
+            filter_warnings = []
+
             if cliente:
-                where_conditions.append("cliente = %s")
-                params.append(cliente)
+                filter_warnings.append(
+                    "cliente filtering skipped (encrypted field)"
+                )
 
             if ativo:
-                where_conditions.append("ativo LIKE %s")
-                params.append(f"%{ativo}%")
+                filter_warnings.append(
+                    "ativo filtering skipped (encrypted field)"
+                )
 
             if status:
                 where_conditions.append("status = %s")
@@ -662,9 +749,9 @@ class StructuredService:
             )
             total_count = count_result[0]["total"] if count_result else 0
 
-            # Get data with pagination
+            # Get data with pagination - include all fields
             data_query = (  # nosec B608
-                "SELECT ticket_id, data_envio, cliente, ativo, comissao, estrutura, "
+                "SELECT ticket_id, ticket_id_hash, data_envio, cliente, ativo, comissao, estrutura, "
                 "quantidade, fixing, status, detalhes, operacao, aai_ordem, "
                 "data_coleta, created_at, updated_at FROM structured_data "
                 + where_clause
@@ -672,15 +759,75 @@ class StructuredService:
             )
 
             data_params = params + [limit, offset]
-            records = execute_query(data_query, tuple(data_params), fetch=True)
+            raw_records = execute_query(
+                data_query, tuple(data_params), fetch=True
+            )
 
-            return {
-                "records": records if records else [],
+            # Decrypt records if crypto is enabled
+            decrypted_records = []
+            if raw_records and self.crypto_enabled:
+                for record in raw_records:
+                    try:
+                        # Convert record to dict if it's not already
+                        record_dict = dict(record) if record else {}
+
+                        # Decrypt sensitive fields
+                        decrypted_record = prepare_structured_from_storage(
+                            record_dict
+                        )
+
+                        # Remove hash field from response
+                        decrypted_record.pop("ticket_id_hash", None)
+
+                        # Apply post-decryption filters if specified
+                        if (
+                            cliente is not None
+                            and decrypted_record.get("cliente") != cliente
+                        ):
+                            continue
+
+                        if (
+                            ativo is not None
+                            and ativo.lower()
+                            not in str(
+                                decrypted_record.get("ativo", "")
+                            ).lower()
+                        ):
+                            continue
+
+                        # Mask sensitive data for response
+                        masked_record = mask_structured_data(decrypted_record)
+                        decrypted_records.append(masked_record)
+
+                    except CryptoError as e:
+                        logger.warning(f"Failed to decrypt record: {e}")
+                        # Include record with encryption notice
+                        record_dict = dict(record) if record else {}
+                        record_dict["_encryption_error"] = "Failed to decrypt"
+                        decrypted_records.append(record_dict)
+                    except Exception as e:
+                        logger.error(f"Error processing record: {e}")
+                        continue
+            else:
+                # Return raw records if crypto not enabled
+                decrypted_records = (
+                    [dict(record) for record in raw_records]
+                    if raw_records
+                    else []
+                )
+
+            response = {
+                "records": decrypted_records,
                 "total_count": total_count,
                 "limit": limit,
                 "offset": offset,
                 "has_more": (offset + limit) < total_count,
             }
+
+            if filter_warnings:
+                response["filter_warnings"] = filter_warnings
+
+            return response
 
         except Exception as e:
             logger.error(f"Error retrieving structured data: {e}")

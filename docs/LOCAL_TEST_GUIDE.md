@@ -270,8 +270,8 @@ CORS_ORIGINS=http://localhost,http://localhost:8000,http://localhost:80
 ```bash
 # Descomentar variáveis MySQL no .env
 MYSQL_ROOT_PASSWORD=secure_root_password_2024
-MYSQL_DATABASE=mesa_premium_db
-MYSQL_USER=mesa_user
+MYSQL_DATABASE=db_name
+MYSQL_USER=db_user
 MYSQL_PASSWORD=secure_password
 ```
 

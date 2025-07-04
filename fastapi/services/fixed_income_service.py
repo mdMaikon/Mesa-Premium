@@ -14,6 +14,13 @@ import httpx
 import pandas as pd
 from database.connection import execute_query, get_database_connection
 from dotenv import load_dotenv
+from utils.crypto_utils import (
+    CryptoError,
+    mask_fixed_income_data,
+    prepare_fixed_income_for_storage,
+    prepare_fixed_income_from_storage,
+    validate_crypto_environment,
+)
 from utils.log_sanitizer import get_sanitized_logger
 
 import mysql.connector
@@ -23,6 +30,7 @@ from .fixed_income_exceptions import (
     FilteringError,
     TokenRetrievalError,
 )
+from .hub_token_service_refactored import TokenRepository
 
 # Load environment variables from project root
 project_root = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -42,35 +50,46 @@ class FixedIncomeService:
             "TPF": "TPF",
         }
 
-    async def get_valid_token(self) -> str | None:
-        """Get a valid token from hub_tokens table"""
+        # Validate cryptographic environment
+        if not validate_crypto_environment():
+            logger.warning(
+                "Cryptographic environment not properly configured - some features may not work"
+            )
+            self.crypto_enabled = False
+        else:
+            logger.info("Cryptographic environment validated successfully")
+            self.crypto_enabled = True
+
+    async def get_valid_token(self, user_login: str = None) -> str | None:
+        """Get a valid token from hub_tokens table with decryption support"""
         try:
-            query = """
-            SELECT token, expires_at
-            FROM hub_tokens
-            WHERE expires_at > NOW()
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
+            # If user_login is provided, get token for specific user
+            if user_login:
+                self.token = TokenRepository.get_valid_token(user_login)
+                if self.token:
+                    logger.info("Valid token retrieved for user")
+                    return self.token
+                else:
+                    logger.error("No valid token found for specified user")
+                    return None
 
-            result = execute_query(query, fetch=True)
+            # Fallback: try to get any valid token from any user
+            logger.info(
+                "No user_login provided, attempting to find any valid token..."
+            )
+            token_result = TokenRepository.get_any_valid_token()
 
-            if not result:
-                logger.error("No valid token found in database")
+            if token_result:
+                user_login_found, token = token_result
+                self.token = token
+                logger.info(
+                    f"Valid token found for user: {user_login_found[:3]}***{user_login_found[-3:]}"
+                )
+                return self.token
+            else:
+                logger.warning("No valid tokens found in database")
                 return None
 
-            token_data = result[0]
-            self.token = token_data["token"]
-            logger.info(
-                f"Valid token retrieved, expires at: {token_data['expires_at']}"
-            )
-            return self.token
-
-        except mysql.connector.Error as e:
-            logger.error(f"Database error retrieving token: {e}")
-            raise TokenRetrievalError(
-                f"Failed to retrieve token from database: {e}"
-            ) from e
         except Exception as e:
             logger.error(f"Unexpected error retrieving token: {e}")
             raise TokenRetrievalError(
@@ -608,7 +627,7 @@ class FixedIncomeService:
             return None
 
     async def create_fixed_income_table(self) -> bool:
-        """Create fixed income table if it doesn't exist"""
+        """Create fixed income table with encryption support if it doesn't exist"""
         try:
             with get_database_connection() as connection:
                 cursor = connection.cursor()
@@ -618,12 +637,13 @@ class FixedIncomeService:
                 cursor.execute(drop_table_query)
                 logger.info("Previous table removed (if existed)")
 
+                # Create table with crypto fields - compatible with both encrypted and non-encrypted data
                 create_table_query = """
                 CREATE TABLE fixed_income_data (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     data_coleta DATETIME NOT NULL,
-                    ativo VARCHAR(255),
-                    instrumento VARCHAR(100),
+                    ativo TEXT,
+                    instrumento TEXT,
                     duration DECIMAL(10,6),
                     indexador VARCHAR(100),
                     juros VARCHAR(50),
@@ -631,21 +651,19 @@ class FixedIncomeService:
                     isento VARCHAR(10),
                     rating VARCHAR(50),
                     vencimento DATE,
-                    tax_min VARCHAR(255),
+                    tax_min TEXT,
                     tax_min_clean DECIMAL(8,4),
                     roa_aprox DECIMAL(8,4),
-                    taxa_emissao DECIMAL(8,4),
+                    taxa_emissao TEXT,
                     publico VARCHAR(100),
                     publico_resumido VARCHAR(10),
-                    emissor VARCHAR(255),
+                    emissor TEXT,
                     cupom VARCHAR(100),
                     classificar_vencimento TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
                     INDEX idx_data_coleta (data_coleta),
-                    INDEX idx_ativo (ativo),
-                    INDEX idx_emissor (emissor),
                     INDEX idx_vencimento (vencimento),
                     INDEX idx_rating (rating),
                     INDEX idx_indexador (indexador)
@@ -654,7 +672,7 @@ class FixedIncomeService:
 
                 cursor.execute(create_table_query)
                 logger.info(
-                    "fixed_income_data table created with TEXT field for classificar_vencimento!"
+                    "fixed_income_data table created with crypto support!"
                 )
                 cursor.close()
 
@@ -677,7 +695,13 @@ class FixedIncomeService:
             return False
 
     async def insert_fixed_income_data(self, df: pd.DataFrame) -> bool:
-        """Insert fixed income data into database"""
+        """Insert fixed income data into database with encryption support"""
+        if not self.crypto_enabled:
+            logger.error(
+                "Crypto environment not available - cannot process fixed income data"
+            )
+            return False
+
         try:
             with get_database_connection() as connection:
                 cursor = connection.cursor()
@@ -689,59 +713,95 @@ class FixedIncomeService:
                 records = df.to_dict("records")
                 logger.info(f"Converted {len(records)} records for insertion")
 
-                # Convert records to list of tuples
+                # Convert records to list of tuples with encryption
                 data_tuples = []
+                encrypted_count = 0
+                error_count = 0
+
                 for record in records:
+                    try:
 
-                    def get_safe_value(
-                        key,
-                        default="",
-                        is_numeric=False,
-                        current_record=record,
-                    ):
-                        value = current_record.get(key, default)
+                        def get_safe_value(
+                            key,
+                            default="",
+                            is_numeric=False,
+                            current_record=record,
+                        ):
+                            value = current_record.get(key, default)
 
-                        if pd.isna(value):
-                            return 0.0 if is_numeric else ""
+                            if pd.isna(value):
+                                return 0.0 if is_numeric else ""
 
-                        if is_numeric:
-                            try:
-                                return float(value) if value != "" else 0.0
-                            except (ValueError, TypeError):
-                                return 0.0
+                            if is_numeric:
+                                try:
+                                    return float(value) if value != "" else 0.0
+                                except (ValueError, TypeError):
+                                    return 0.0
 
-                        if isinstance(value, str):
-                            return value.strip()
-                        elif value is None:
-                            return ""
-                        else:
-                            return str(value).strip()
+                            if isinstance(value, str):
+                                return value.strip()
+                            elif value is None:
+                                return ""
+                            else:
+                                return str(value).strip()
 
-                    tuple_data = (
-                        record.get("data_coleta"),
-                        get_safe_value("Ativo"),
-                        get_safe_value("Instrumento"),
-                        get_safe_value("Duration", 0.0, is_numeric=True),
-                        get_safe_value("Indexador"),
-                        get_safe_value("Juros"),
-                        record.get("Primeira Data de Juros"),
-                        get_safe_value("Isento"),
-                        get_safe_value("Rating"),
-                        record.get("Vencimento"),
-                        get_safe_value("Tax.Mín"),
-                        get_safe_value("Tax.Mín_Clean", 0.0, is_numeric=True),
-                        get_safe_value("ROA E. Aprox.", 0.0, is_numeric=True),
-                        get_safe_value(
-                            "Taxa de Emissão", 0.0, is_numeric=True
-                        ),
-                        get_safe_value("Público"),
-                        get_safe_value("Público Resumido"),
-                        get_safe_value("Emissor"),
-                        get_safe_value("Cupom"),
-                        get_safe_value("Classificar Vencimento"),
-                    )
+                        # Prepare data for encryption - map DataFrame columns to database fields
+                        record_for_crypto = {
+                            "ativo": get_safe_value("Ativo"),
+                            "instrumento": get_safe_value("Instrumento"),
+                            "emissor": get_safe_value("Emissor"),
+                            "tax_min": get_safe_value("Tax.Mín"),
+                            "taxa_emissao": get_safe_value(
+                                "Taxa de Emissão", 0.0, is_numeric=True
+                            ),
+                        }
 
-                    data_tuples.append(tuple_data)
+                        # Encrypt sensitive fields
+                        encrypted_record = prepare_fixed_income_for_storage(
+                            record_for_crypto
+                        )
+
+                        tuple_data = (
+                            record.get("data_coleta"),
+                            encrypted_record["ativo"],
+                            encrypted_record["instrumento"],
+                            get_safe_value("Duration", 0.0, is_numeric=True),
+                            get_safe_value("Indexador"),
+                            get_safe_value("Juros"),
+                            record.get("Primeira Data de Juros"),
+                            get_safe_value("Isento"),
+                            get_safe_value("Rating"),
+                            record.get("Vencimento"),
+                            encrypted_record["tax_min"],
+                            get_safe_value(
+                                "Tax.Mín_Clean", 0.0, is_numeric=True
+                            ),
+                            get_safe_value(
+                                "ROA E. Aprox.", 0.0, is_numeric=True
+                            ),
+                            encrypted_record["taxa_emissao"],
+                            get_safe_value("Público"),
+                            get_safe_value("Público Resumido"),
+                            encrypted_record["emissor"],
+                            get_safe_value("Cupom"),
+                            get_safe_value("Classificar Vencimento"),
+                        )
+
+                        data_tuples.append(tuple_data)
+                        encrypted_count += 1
+
+                    except CryptoError as e:
+                        logger.error(f"Encryption error for record: {e}")
+                        error_count += 1
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error processing record: {e}")
+                        error_count += 1
+                        continue
+
+                if not data_tuples:
+                    logger.error("No records could be encrypted successfully")
+                    return False
 
                 insert_query = """
                 INSERT INTO fixed_income_data
@@ -756,7 +816,9 @@ class FixedIncomeService:
                 cursor.executemany(insert_query, data_tuples)
                 connection.commit()
 
-                logger.info(f"Inserted {len(data_tuples)} records into MySQL!")
+                logger.info(
+                    f"Inserted {len(data_tuples)} encrypted records into MySQL! ({encrypted_count} encrypted, {error_count} errors)"
+                )
                 cursor.close()
 
             return True
@@ -903,12 +965,12 @@ class FixedIncomeService:
             return df
 
     async def get_processing_stats(self) -> dict[str, Any]:
-        """Get processing statistics"""
+        """Get processing statistics - adapted for encrypted data"""
         try:
+            # Basic stats that don't require decryption
             query = """
             SELECT
                 COUNT(*) as total_records,
-                COUNT(DISTINCT emissor) as unique_issuers,
                 COUNT(DISTINCT indexador) as unique_indexers,
                 MAX(data_coleta) as last_update,
                 MIN(vencimento) as earliest_maturity,
@@ -923,9 +985,13 @@ class FixedIncomeService:
 
             stats = result[0]
 
+            # Note: unique_issuers is not calculated because emissor is encrypted
+            # and would require decryption of all records, which is expensive
+            # For this metric, consider implementing cached/aggregated values
+
             return {
                 "total_records": stats["total_records"],
-                "unique_issuers": stats["unique_issuers"],
+                "unique_issuers": "N/A (encrypted)",
                 "unique_indexers": stats["unique_indexers"],
                 "last_update": stats["last_update"].isoformat()
                 if stats["last_update"]
@@ -936,8 +1002,79 @@ class FixedIncomeService:
                 "latest_maturity": stats["latest_maturity"].isoformat()
                 if stats["latest_maturity"]
                 else None,
+                "note": "Some statistics are not available due to encryption. Consider implementing cached aggregation for performance.",
             }
 
         except Exception as e:
             logger.error(f"Error getting processing stats: {e}")
+            return {"error": str(e)}
+
+    async def get_fixed_income_data_sample(
+        self, limit: int = 10
+    ) -> dict[str, Any]:
+        """Get a sample of fixed income data with decryption (for testing/admin purposes)"""
+        if not self.crypto_enabled:
+            logger.warning(
+                "Crypto environment not available - returning encrypted data"
+            )
+
+        try:
+            # Get sample data
+            query = """
+            SELECT ativo, instrumento, emissor, tax_min, taxa_emissao,
+                   indexador, rating, vencimento, data_coleta, created_at
+            FROM fixed_income_data
+            ORDER BY created_at DESC
+            LIMIT %s
+            """
+
+            raw_records = execute_query(query, (limit,), fetch=True)
+
+            if not raw_records:
+                return {"records": [], "total_count": 0}
+
+            # Decrypt records if crypto is enabled
+            decrypted_records = []
+            if self.crypto_enabled:
+                for record in raw_records:
+                    try:
+                        # Convert record to dict if it's not already
+                        record_dict = dict(record) if record else {}
+
+                        # Decrypt sensitive fields
+                        decrypted_record = prepare_fixed_income_from_storage(
+                            record_dict
+                        )
+
+                        # Mask sensitive data for response
+                        masked_record = mask_fixed_income_data(
+                            decrypted_record
+                        )
+                        decrypted_records.append(masked_record)
+
+                    except CryptoError as e:
+                        logger.warning(f"Failed to decrypt record: {e}")
+                        # Include record with encryption notice
+                        record_dict = dict(record) if record else {}
+                        record_dict["_encryption_error"] = "Failed to decrypt"
+                        decrypted_records.append(record_dict)
+                    except Exception as e:
+                        logger.error(f"Error processing record: {e}")
+                        continue
+            else:
+                # Return raw records if crypto not enabled
+                decrypted_records = (
+                    [dict(record) for record in raw_records]
+                    if raw_records
+                    else []
+                )
+
+            return {
+                "records": decrypted_records,
+                "total_count": len(decrypted_records),
+                "note": "Sample data with sensitive fields masked for security",
+            }
+
+        except Exception as e:
+            logger.error(f"Error retrieving fixed income data sample: {e}")
             return {"error": str(e)}

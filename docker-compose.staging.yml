@@ -1,4 +1,4 @@
-# Docker Compose para Produção VPS (sem MySQL local)
+# Docker Compose para Staging/Homologação (sem Nginx)
 
 services:
   # FastAPI Application
@@ -6,12 +6,12 @@ services:
     build:
       context: ./fastapi
       dockerfile: Dockerfile
-    container_name: mesa_premium_api_prod
+    container_name: mesa_premium_api_staging
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.staging
     environment:
-      - ENVIRONMENT=production
+      - ENVIRONMENT=staging
     volumes:
       - ./fastapi/logs:/app/logs
     depends_on:
@@ -19,12 +19,12 @@ services:
     networks:
       - mesa_premium_network
     ports:
-      - "8000:8000"  # Exposição direta para Nginx do VPS
+      - "8000:8000"  # Exposição direta para Nginx do servidor
 
   # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: mesa_premium_redis_prod
+    container_name: mesa_premium_redis_staging
     restart: unless-stopped
     volumes:
       - redis_data:/data

@@ -90,10 +90,14 @@ class StructuredStatsResponse(BaseModel):
     """Response model for structured data statistics"""
 
     total_records: int = Field(..., description="Total records in database")
-    unique_clients: int = Field(..., description="Number of unique clients")
-    unique_assets: int = Field(..., description="Number of unique assets")
-    total_commission: Decimal | None = Field(
-        None, description="Total commission amount"
+    unique_clients: int | str = Field(
+        ..., description="Number of unique clients (or 'N/A (encrypted)')"
+    )
+    unique_assets: int | str = Field(
+        ..., description="Number of unique assets (or 'N/A (encrypted)')"
+    )
+    total_commission: Decimal | str | None = Field(
+        None, description="Total commission amount (or 'N/A (encrypted)')"
     )
     last_update: str | None = Field(
         None, description="Last data update timestamp"

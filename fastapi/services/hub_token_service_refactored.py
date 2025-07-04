@@ -25,6 +25,12 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from utils.crypto_utils import (
+    generate_user_hash,
+    prepare_token_for_storage,
+    prepare_token_from_storage,
+    validate_crypto_environment,
+)
 from utils.log_sanitizer import get_sanitized_logger, mask_username
 
 logger = get_sanitized_logger(__name__)
@@ -719,12 +725,12 @@ class TokenExtractor:
 
 
 class TokenRepository:
-    """Handles token persistence in database"""
+    """Handles token persistence in database with encryption support"""
 
     @staticmethod
     def save_token(user_login: str, token_data: dict[str, Any]) -> bool:
         """
-        Save token to database
+        Save token to database with encryption
 
         Args:
             user_login: User login
@@ -734,39 +740,49 @@ class TokenRepository:
             bool: True if successful, False otherwise
         """
         try:
-            # Delete existing tokens for user
-            delete_query = "DELETE FROM hub_tokens WHERE user_login = %s"
-            execute_query(delete_query, (user_login,))
+            # Validate crypto environment
+            if not validate_crypto_environment():
+                logger.error("Crypto environment validation failed")
+                return False
 
-            # Insert new token
+            # Prepare encrypted data for storage
+            storage_data = prepare_token_for_storage(user_login, token_data)
+
+            # Delete existing tokens for user using hash
+            user_hash = generate_user_hash(user_login)
+            delete_query = "DELETE FROM hub_tokens WHERE user_login_hash = %s"
+            execute_query(delete_query, (user_hash,))
+
+            # Insert new encrypted token
             insert_query = """
-                INSERT INTO hub_tokens (user_login, token, expires_at, extracted_at, created_at)
-                VALUES (%s, %s, %s, %s, NOW())
+                INSERT INTO hub_tokens (user_login, user_login_hash, token, expires_at, extracted_at, created_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
             """
 
             execute_query(
                 insert_query,
                 (
-                    user_login,
-                    token_data["token"],
-                    token_data["expires_at"],
-                    token_data["extracted_at"],
+                    storage_data["user_login"],
+                    storage_data["user_login_hash"],
+                    storage_data["token"],
+                    storage_data["expires_at"],
+                    storage_data["extracted_at"],
                 ),
             )
 
             logger.info(
-                f"Token saved successfully for user: {mask_username(user_login)}"
+                f"Encrypted token saved successfully for user: {mask_username(user_login)}"
             )
             return True
 
         except Exception as e:
-            logger.error(f"Error saving token: {e}")
+            logger.error(f"Error saving encrypted token: {e}")
             return False
 
     @staticmethod
     def get_token_status(user_login: str) -> dict[str, Any] | None:
         """
-        Get token status from database
+        Get token status from database with decryption
 
         Args:
             user_login: User login
@@ -775,17 +791,29 @@ class TokenRepository:
             Optional[Dict]: Token status data
         """
         try:
+            # Validate crypto environment
+            if not validate_crypto_environment():
+                logger.error("Crypto environment validation failed")
+                return None
+
+            # Generate search hash for user
+            user_hash = generate_user_hash(user_login)
+
             query = """
-                SELECT token, expires_at, extracted_at, created_at
+                SELECT user_login, token, expires_at, extracted_at, created_at
                 FROM hub_tokens
-                WHERE user_login = %s
+                WHERE user_login_hash = %s
                 ORDER BY created_at DESC
                 LIMIT 1
             """
 
-            result = execute_query(query, (user_login,), fetch=True)
+            result = execute_query(query, (user_hash,), fetch=True)
             if result:
-                token_data = result[0]
+                encrypted_data = result[0]
+
+                # Prepare decrypted data
+                token_data = prepare_token_from_storage(encrypted_data)
+
                 return {
                     "user_login": mask_username(user_login),
                     "has_token": True,
@@ -807,7 +835,109 @@ class TokenRepository:
             }
 
         except Exception as e:
-            logger.error(f"Error getting token status: {e}")
+            logger.error(f"Error getting encrypted token status: {e}")
+            return None
+
+    @staticmethod
+    def get_valid_token(user_login: str) -> str | None:
+        """
+        Get valid decrypted token from database
+
+        Args:
+            user_login: User login
+
+        Returns:
+            Optional[str]: Valid token or None
+        """
+        try:
+            token_status = TokenRepository.get_token_status(user_login)
+
+            if token_status and token_status.get("is_valid"):
+                # Get decrypted token
+                user_hash = generate_user_hash(user_login)
+                query = """
+                    SELECT user_login, token, expires_at, extracted_at, created_at
+                    FROM hub_tokens
+                    WHERE user_login_hash = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """
+
+                result = execute_query(query, (user_hash,), fetch=True)
+                if result:
+                    encrypted_data = result[0]
+                    token_data = prepare_token_from_storage(encrypted_data)
+                    logger.info(
+                        f"Valid token retrieved for user: {mask_username(user_login)}"
+                    )
+                    return token_data["token"]
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting valid token: {e}")
+            return None
+
+    @staticmethod
+    def get_any_valid_token() -> tuple[str, str] | None:
+        """
+        Get any valid token from database without requiring specific user_login
+
+        This method searches for valid tokens by checking expiration dates
+        and tries to decrypt them. Returns the first valid token found.
+
+        Returns:
+            Optional[Tuple[str, str]]: (user_login, token) or None if no valid token found
+        """
+        try:
+            # Validate crypto environment
+            if not validate_crypto_environment():
+                logger.error("Crypto environment validation failed")
+                return None
+
+            # Get all tokens that might be valid (not expired by date)
+            query = """
+                SELECT user_login, user_login_hash, token, expires_at, extracted_at, created_at
+                FROM hub_tokens
+                WHERE expires_at > NOW()
+                ORDER BY created_at DESC
+            """
+
+            results = execute_query(query, fetch=True)
+            if not results:
+                logger.warning("No unexpired tokens found in database")
+                return None
+
+            logger.info(
+                f"Found {len(results)} unexpired token(s), checking validity..."
+            )
+
+            # Try to decrypt each token until we find a valid one
+            for encrypted_data in results:
+                try:
+                    # Attempt to decrypt the token data
+                    token_data = prepare_token_from_storage(encrypted_data)
+
+                    if token_data and token_data.get("token"):
+                        # Double-check expiration after decryption
+                        if token_data["expires_at"] > datetime.now():
+                            logger.info(
+                                f"Valid token found for user: {mask_username(token_data['user_login'])}"
+                            )
+                            return token_data["user_login"], token_data[
+                                "token"
+                            ]
+
+                except Exception as e:
+                    # This token couldn't be decrypted, try the next one
+                    logger.debug(f"Could not decrypt token: {e}")
+                    continue
+
+            logger.warning("No valid decryptable tokens found")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting any valid token: {e}")
             return None
 
 

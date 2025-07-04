@@ -9,41 +9,19 @@ services:
     container_name: mesa_premium_api
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.dev
     environment:
       - ENVIRONMENT=development
-      - DATABASE_HOST=mysql
-      - DATABASE_PORT=3306
       - CORS_ORIGINS=http://localhost,http://localhost:8000,http://localhost:80
     volumes:
       - ./fastapi/logs:/app/logs
     depends_on:
-      - mysql
       - redis
     networks:
       - mesa_premium_network
     # Não expor porta diretamente - será acessada via Nginx
     expose:
       - "8000"
-
-  # MySQL Database (Local para desenvolvimento)
-  mysql:
-    image: mysql:8.0
-    container_name: mesa_premium_mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./mysql/init:/docker-entrypoint-initdb.d
-    ports:
-      - "3306:3306"
-    networks:
-      - mesa_premium_network
-    command: --default-authentication-plugin=mysql_native_password
 
   # Redis Cache (Opcional - para futuro)
   redis:
@@ -79,5 +57,4 @@ networks:
     driver: bridge
 
 volumes:
-  mysql_data:
   redis_data:

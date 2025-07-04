@@ -53,7 +53,41 @@ poetry run cz commit
 
 ### Executando as Aplicações
 
-#### API FastAPI (Recomendado)
+#### API FastAPI - 3 Ambientes Separados (Recomendado)
+
+##### Desenvolvimento Local (com Nginx containerizado)
+```bash
+# Gerar requirements.txt para Docker
+poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
+
+# Build e execução (usa .env.dev)
+export COMPOSE_BAKE=true  # Para performance otimizada
+docker compose build
+docker compose up -d
+
+# Acesso: http://localhost/docs
+# Banco: mesa_premium_dev (MySQL VPS)
+```
+
+##### Staging/Homologação (sem Nginx)
+```bash
+# Execução staging (usa .env.staging)
+docker compose -f docker-compose.staging.yml up -d
+
+# Acesso: http://servidor:8000/docs (via Nginx do servidor)
+# Banco: mesa_premium_staging (MySQL VPS)
+```
+
+##### Produção VPS (sem Nginx)
+```bash
+# Execução produção (usa .env.production)
+docker compose -f docker-compose.prod.yml up -d
+
+# Acesso: https://domain.com/docs (via Nginx do VPS)
+# Banco: mesa_premium_db (MySQL VPS)
+```
+
+##### Execução Direta (Poetry - Desenvolvimento)
 ```bash
 # Executar API completa com Poetry
 poetry run task dev
@@ -61,13 +95,7 @@ poetry run task dev
 # Ou executar diretamente
 poetry run uvicorn fastapi.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Para Docker: Gerar requirements.txt e build
-poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
-export COMPOSE_BAKE=true  # Para performance otimizada
-docker compose build
-docker compose up -d
-
-# Acesso à documentação: http://localhost:8000/docs (Poetry) ou http://localhost/docs (Docker)
+# Acesso: http://localhost:8000/docs
 ```
 
 #### Desenvolvimento e Testes
@@ -99,6 +127,19 @@ poetry run python renovar_token.py
 # Importar como módulo
 poetry run python -c "from renovar_token import extract_hub_token; extract_hub_token()"
 ```
+
+### Estrutura de Bancos de Dados MySQL VPS
+
+#### Bancos por Ambiente
+- **mesa_premium_dev** - Desenvolvimento local (Docker)
+- **mesa_premium_staging** - Homologação/Staging
+- **mesa_premium_db** - Produção
+
+#### Configuração de Conexão
+- **Host**: 31.97.151.142 (Hostinger VPS)
+- **Usuário**: mesa_user
+- **Porta**: 3306
+- **Charset**: utf8mb4
 
 ### Operações do Banco de Dados
 
@@ -201,10 +242,12 @@ fastapi/
 - `create_new_columns()`: Cria colunas derivadas (Emissor, Cupom, etc.)
 
 ### Configuração do Banco de Dados
-Credenciais do banco são carregadas do arquivo `.env`:
-- Host: Servidor MySQL da Hostinger
-- Pool de conexões e gerenciamento de timeout
-- Criação automática de tabelas e rotação de tokens (remove tokens antigos por usuário)
+Credenciais do banco são carregadas dos arquivos `.env` específicos por ambiente:
+- **Host**: 31.97.151.142 (MySQL VPS Hostinger)
+- **Bancos**: mesa_premium_dev, mesa_premium_staging, mesa_premium_db
+- **Pool de conexões**: Configurado por ambiente (5-10 conexões)
+- **Criação automática de tabelas**: hub_tokens, fixed_income_data, structured_data
+- **Rotação de tokens**: Remove tokens antigos por usuário automaticamente
 
 ### Suporte Multiplataforma
 A aplicação adapta comportamento baseado no ambiente detectado:
@@ -220,8 +263,28 @@ A aplicação adapta comportamento baseado no ambiente detectado:
 
 ## Arquivos de Configuração
 
-### `.env`
-Contém credenciais MySQL da Hostinger e configurações de conexão. Criado automaticamente pelo `setup_menu.bat` ou manualmente.
+### Arquivos .env por Ambiente
+
+#### `.env.dev` (Desenvolvimento)
+- Banco: `mesa_premium_dev`
+- Debug: habilitado
+- Rate limiting: relaxado
+- CORS: permissivo para localhost
+
+#### `.env.staging` (Homologação)
+- Banco: `mesa_premium_staging`
+- Configurações intermediárias
+- Rate limiting: moderado
+- CORS: domínios de staging
+
+#### `.env.production` (Produção)
+- Banco: `mesa_premium_db`
+- Debug: desabilitado
+- Rate limiting: restritivo
+- CORS: apenas domínios de produção
+
+#### `.env.example`
+Template base para criar novos ambientes.
 
 ### `user_config.json`
 Armazena preferências do usuário (último login usado) para conveniência.
@@ -243,41 +306,42 @@ Dependências principais (gerenciadas via Poetry):
 - `pydantic`: Validação de dados e serialização
 - `python-dotenv`: Gerenciamento de variáveis de ambiente
 
-## Exemplos de Uso da API
+## Exemplos de Uso da API por Ambiente
 
-### Extração de Token
+### Desenvolvimento Local (via Nginx Docker)
 ```bash
 # Extrair token do Hub XP
-curl -X POST "http://localhost:8000/api/token/extract" \
+curl -X POST "http://localhost/api/token/extract" \
   -H "Content-Type: application/json" \
   -d '{"user_login": "usuario", "password": "senha", "mfa_code": "123456"}'
 
-# Verificar status do token
-curl "http://localhost:8000/api/token/status/usuario"
+# Health check
+curl "http://localhost/api/health"
+
+# Automações disponíveis
+curl "http://localhost/api/automations"
+
+# Processamento de renda fixa
+curl -X POST "http://localhost/api/fixed-income/process"
+curl "http://localhost/api/fixed-income/stats"
 ```
 
-### Processamento de Renda Fixa
+### Staging/Produção (via Nginx do Servidor)
 ```bash
-# Processar dados de renda fixa (assíncrono)
-curl -X POST "http://localhost:8000/api/fixed-income/process"
+# Staging
+curl "http://staging.domain.com/api/health"
+curl "http://staging.domain.com/docs"
 
-# Verificar status do processamento
-curl "http://localhost:8000/api/fixed-income/status"
-
-# Obter estatísticas dos dados
-curl "http://localhost:8000/api/fixed-income/stats"
-
-# Listar categorias disponíveis
-curl "http://localhost:8000/api/fixed-income/categories"
+# Produção
+curl "https://domain.com/api/health"
+curl "https://domain.com/docs"
 ```
 
-### Automações Disponíveis
+### Acesso Direto à API (Poetry)
 ```bash
-# Listar todas as automações
-curl "http://localhost:8000/api/automations"
-
-# Health check da aplicação
+# Desenvolvimento direto (porta 8000)
 curl "http://localhost:8000/api/health"
+curl "http://localhost:8000/docs"
 ```
 
 ## Notas de Desenvolvimento
@@ -289,20 +353,38 @@ A aplicação inclui configuração sofisticada do WebDriver que manipula:
 - Otimização específica por ambiente (modo headless para WSL/Linux)
 - Mecanismos de fallback para dependências ausentes
 
-### Build e Deploy com Poetry + Docker
-```bash
-# 1. Preparar ambiente Poetry
-poetry install --only=main
+### Build e Deploy por Ambiente
 
-# 2. Gerar requirements.txt para Docker
+#### Desenvolvimento Local
+```bash
+# 1. Preparar ambiente
+poetry install
 poetry export -f requirements.txt --output fastapi/requirements.txt --without-hashes
 
-# 3. Build com performance otimizada
+# 2. Build e execução (com Nginx)
 export COMPOSE_BAKE=true
 docker compose build
-
-# 4. Deploy
 docker compose up -d
+
+# Acesso: http://localhost/docs
+```
+
+#### Staging
+```bash
+# Build e execução (sem Nginx)
+docker compose -f docker-compose.staging.yml build
+docker compose -f docker-compose.staging.yml up -d
+
+# Configurar Nginx do servidor para proxy para porta 8000
+```
+
+#### Produção VPS
+```bash
+# Build e execução (sem Nginx)
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+
+# Configurar Nginx do VPS para proxy para porta 8000
 ```
 
 ### Gerenciamento de Tokens
@@ -337,9 +419,46 @@ docker compose up -d
 - **Percentuais**: ROA e Taxa de Emissão convertidos para formato decimal
 - **Datas**: Normalizadas para formato MySQL DATETIME/DATE
 
+### Arquitetura de Deploy VPS
+
+#### Nginx - Configuração por Ambiente
+- **Desenvolvimento**: Nginx containerizado (porta 80/443)
+- **Staging/Produção**: Nginx do VPS/servidor (sem container)
+- **Motivo**: Evitar conflito de portas 80/443 no servidor
+
+#### Estrutura de Arquivos
+```
+MenuAutomacoes/
+├── docker-compose.yml          # Desenvolvimento (com Nginx)
+├── docker-compose.staging.yml  # Staging (sem Nginx, porta 8000)
+├── docker-compose.prod.yml     # Produção (sem Nginx, porta 8000)
+├── .env.dev                    # Config desenvolvimento
+├── .env.staging                # Config staging
+├── .env.production             # Config produção
+├── .env.example                # Template
+├── nginx/                      # Configurações Docker (só dev)
+│   ├── nginx.conf
+│   └── sites-available/
+└── vps-nginx/                  # Configurações VPS (Fase 2)
+    └── mesa-premium.conf
+```
+
+#### Comandos por Ambiente
+```bash
+# Desenvolvimento (local com Nginx Docker)
+docker compose up -d
+
+# Staging (sem Nginx, expose porta 8000)
+docker compose -f docker-compose.staging.yml up -d
+
+# Produção (sem Nginx, expose porta 8000)
+docker compose -f docker-compose.prod.yml up -d
+```
+
 ### Considerações de Segurança
-- Credenciais do banco armazenadas em `.env` (no gitignore)
+- Credenciais do banco armazenadas em arquivos `.env` específicos (no gitignore)
 - Senhas mascaradas em logs e UI
 - Tokens manipulados com segurança sem armazenamento persistente no código
-- API protegida com CORS configurável
+- API protegida com CORS configurável por ambiente
+- Rate limiting configurado por ambiente (dev relaxado, prod restritivo)
 - Logs detalhados para auditoria de operações

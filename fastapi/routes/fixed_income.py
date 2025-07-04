@@ -36,7 +36,9 @@ class StatsResponse(BaseModel):
     """Response model for statistics"""
 
     total_records: int = None
-    unique_issuers: int = None
+    unique_issuers: int | str = (
+        None  # Can be int or string (for encrypted data)
+    )
     unique_indexers: int = None
     last_update: str = None
     earliest_maturity: str = None
